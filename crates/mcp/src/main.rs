@@ -83,6 +83,7 @@ enum Command {
     SetWarp {
         on: bool,
     },
+    Hail,
     Respond(String),
     RunScenario(Option<String>),
 }
@@ -193,7 +194,14 @@ impl GameMcp {
     }
 
     #[tool(
-        description = "Respond to a planet chief encounter while docked (see observe.encounter.options). Returns the updated state."
+        description = "Hail the nearest friendly NPC ship in range while undocked to talk or trade in space. Returns the updated state."
+    )]
+    async fn hail(&self) -> String {
+        self.call(Command::Hail).await
+    }
+
+    #[tool(
+        description = "Respond to a planet chief or hailed NPC ship encounter (see observe.encounter.options). Returns the updated state."
     )]
     async fn respond(&self, Parameters(RespondArgs { choice }): Parameters<RespondArgs>) -> String {
         self.call(Command::Respond(choice)).await
@@ -254,6 +262,11 @@ fn game_thread(content_root: PathBuf, mut rx: mpsc::Receiver<(Command, oneshot::
             }
             Command::SetWarp { on } => {
                 harness.set_warp(on);
+                harness.advance(SETTLE_TICKS);
+                json(&harness.observe())
+            }
+            Command::Hail => {
+                harness.hail();
                 harness.advance(SETTLE_TICKS);
                 json(&harness.observe())
             }

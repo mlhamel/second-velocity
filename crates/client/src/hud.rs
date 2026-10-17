@@ -175,7 +175,7 @@ fn spawn_hud(mut commands: Commands) {
         .with_children(|parent| {
             spawn_text(
                 parent,
-                "W thrust   A/D turn   Space fire   L land   U lift   J warp   T chief",
+                "W thrust   A/D turn   Space fire   L land   U lift   H hail   J warp   T chief",
                 13.0,
                 DIM,
             );

@@ -11,10 +11,10 @@ use bevy_replicon_renet2::netcode::{
 use bevy_replicon_renet2::renet2::{ConnectionConfig, RenetClient, RenetServer};
 use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
 use evr_protocol::{
-    AccountState, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt, Heading, Hull,
-    Meteorite, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget, RequestLand,
-    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
-    ShipInfo, ShipKind, SystemMembership,
+    AccountState, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt, HailShip,
+    Heading, Hull, Meteorite, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget,
+    RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle,
+    SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
 use evr_server::{
     Content, EMBEDDED_CLIENT_ID, TickMode, attach_memory, build_server_app,
@@ -251,6 +251,10 @@ impl Harness {
         });
     }
 
+    pub fn hail(&mut self) {
+        self.client.world_mut().client_trigger(HailShip);
+    }
+
     pub fn observe(&mut self) -> serde_json::Value {
         let mut notices = Vec::new();
         if let Some(log) = self.client.world().get_resource::<NoticeLog>() {
@@ -300,23 +304,25 @@ impl Harness {
             });
         };
 
-        let content = self.server.world().resource::<Content>();
-        let market = docked
-            .as_ref()
-            .and_then(|(system_id, planet_id)| {
-                content
-                    .0
-                    .system(system_id)
-                    .and_then(|system| system.planets.iter().find(|p| p.id == *planet_id))
-            })
-            .map(|planet| {
-                planet
-                    .commodities
-                    .iter()
-                    .map(|c| serde_json::json!({ "id": c.id, "price": c.price }))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let market = {
+            let content = self.server.world().resource::<Content>();
+            docked
+                .as_ref()
+                .and_then(|(system_id, planet_id)| {
+                    content
+                        .0
+                        .system(system_id)
+                        .and_then(|system| system.planets.iter().find(|p| p.id == *planet_id))
+                })
+                .map(|planet| {
+                    planet
+                        .commodities
+                        .iter()
+                        .map(|c| serde_json::json!({ "id": c.id, "price": c.price }))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default()
+        };
 
         let encounter_json = encounter.map(|enc| {
             let mood = match enc.mood {
@@ -408,19 +414,21 @@ impl Harness {
             let mut state = self
                 .server
                 .world_mut()
-                .query::<(&ShipInfo, &Position, &Hull)>();
+                .query::<(&ShipInfo, &Position, &Hull, &SystemMembership)>();
             let world = self.server.world();
+            let content = world.resource::<Content>();
             state
                 .iter(world)
-                .filter(|(info, _, _)| info.owner != Some(owner))
-                .map(|(info, position, hull)| {
+                .filter(|(info, _, _, _)| info.owner != Some(owner))
+                .map(|(info, position, hull, membership)| {
+                    let ship_def = content.0.ship(&info.def_id);
                     serde_json::json!({
+                        "def_id": info.def_id,
                         "name": info.name,
-                        "kind": match info.kind {
-                            ShipKind::Player => "player",
-                            ShipKind::Pirate => "pirate",
-                            ShipKind::Police => "police",
-                        },
+                        "race": ship_def.map_or("terran", |d| d.race.as_str()),
+                        "size": ship_def.map_or("medium", |d| d.size.as_str()),
+                        "kind": info.kind.as_str(),
+                        "system": membership.0,
                         "position": [position.0.x, position.0.y],
                         "shields": hull.shields,
                         "armor": hull.armor,

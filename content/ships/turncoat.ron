@@ -1,6 +1,8 @@
 (
     id: "turncoat",
     name: "Turncoat",
+    race: "terran",
+    size: Light,
     description: "A surplus fighter that traded its registration papers for a fresh coat of black paint.",
     price: 18000,
     mass: 10.0,

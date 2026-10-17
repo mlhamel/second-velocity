@@ -71,6 +71,9 @@ fn kind_color(kind: ShipKind) -> Color {
         ShipKind::Player => Color::srgb(0.55, 1.0, 0.85),
         ShipKind::Pirate => Color::srgb(1.0, 0.4, 0.3),
         ShipKind::Police => Color::srgb(0.45, 0.65, 1.0),
+        ShipKind::Merchant => Color::srgb(1.0, 0.82, 0.38),
+        ShipKind::Defender => Color::srgb(0.4, 0.85, 1.0),
+        ShipKind::Explorer => Color::srgb(0.75, 0.55, 1.0),
     }
 }
 
@@ -85,17 +88,15 @@ fn attach_ship_visuals(
     added: AddedShips,
 ) {
     for (entity, info, hull) in &added {
-        let (image, base_color) = match content
-            .0
-            .ship(&info.def_id)
-            .and_then(|def| def.sprite.clone())
-        {
+        let ship_def = content.0.ship(&info.def_id);
+        let world_px = ship_def.map_or(44.0, |def| def.size.world_size());
+        let (image, base_color) = match ship_def.and_then(|def| def.sprite.clone()) {
             Some(path) => (asset_server.load(path), Color::WHITE),
             None => (textures.ship.clone(), kind_color(info.kind)),
         };
         let mut sprite = Sprite::from_image(image);
         sprite.color = base_color;
-        sprite.custom_size = Some(Vec2::new(44.0, 44.0));
+        sprite.custom_size = Some(Vec2::splat(world_px));
         commands.entity(entity).insert((
             ShipVisual,
             sprite,

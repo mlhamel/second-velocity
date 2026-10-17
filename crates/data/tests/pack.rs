@@ -11,15 +11,23 @@ fn base_pack_loads() {
     let pack = ContentPack::load_dir(&root).expect("base pack must load");
 
     assert_eq!(pack.manifest.id, "evr-base");
-    assert_eq!(pack.ships.len(), 3);
+    assert_eq!(pack.ships.len(), 17);
     assert_eq!(pack.systems.len(), 11);
     assert_eq!(pack.outfits.len(), 1);
     assert_eq!(pack.quests.len(), 4);
-    assert_eq!(pack.scenarios.len(), 4);
+    assert_eq!(pack.scenarios.len(), 5);
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");
+    assert_eq!(shuttle.race, "terran");
+    assert_eq!(shuttle.size, evr_data::ShipSize::Light);
     assert_eq!(shuttle.default_outfits, vec!["light-blaster".to_owned()]);
+
+    let dreadnought = pack
+        .ship("korath-dreadnought")
+        .expect("korath-dreadnought exists");
+    assert_eq!(dreadnought.race, "korath");
+    assert_eq!(dreadnought.size, evr_data::ShipSize::Capital);
 
     let sol = pack.system("sol").expect("sol exists");
     assert_eq!(sol.government, "confederation");

@@ -1,6 +1,8 @@
 (
     id: "shuttle",
     name: "Shuttle",
+    race: "terran",
+    size: Light,
     description: "A tired little workhorse. Every legend in this galaxy started behind one of these consoles.",
     price: 12000,
     mass: 12.0,

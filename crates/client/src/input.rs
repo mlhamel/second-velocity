@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_data::ContentPack;
 use evr_protocol::{
-    BuyCommodity, ChiefEncounter, DockedAt, PlanetTag, Position, RequestLand, RequestLiftOff,
-    RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo,
-    SystemMembership,
+    BuyCommodity, ChiefEncounter, DockedAt, HailShip, PlanetTag, Position, RequestLand,
+    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
+    ShipInfo, SystemMembership,
 };
 use evr_server::gameplay::LAND_RANGE;
 
@@ -121,9 +121,10 @@ fn poll_action_input(
         commands.client_trigger(RequestLiftOff);
     }
 
-    let Some(docked) = docked else {
-        return;
-    };
+    if docked.is_none() && keys.just_pressed(KeyCode::KeyH) {
+        info!("client: HailShip");
+        commands.client_trigger(HailShip);
+    }
 
     let panel_open = chief_panel.is_some_and(|s| s.visible) && encounter.is_some();
     if panel_open && let Some(enc) = encounter {
@@ -140,6 +141,10 @@ fn poll_action_input(
         }
         return;
     }
+
+    let Some(docked) = docked else {
+        return;
+    };
 
     let Some(system) = content.0.system(&docked.system) else {
         return;

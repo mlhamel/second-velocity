@@ -13,5 +13,5 @@ pub use manifest::Manifest;
 pub use outfit::{OutfitDef, OutfitKind, WeaponDef};
 pub use quest::{QuestDef, QuestKind};
 pub use scenario::{ScenarioDef, ScenarioStep};
-pub use ship::ShipDef;
+pub use ship::{ShipDef, ShipSize};
 pub use system::{ChiefDef, CommodityPrice, MeteoriteFieldDef, PlanetDef, SystemDef};

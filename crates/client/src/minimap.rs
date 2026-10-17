@@ -81,6 +81,9 @@ fn dot_color(planet: Option<&PlanetTag>, ship_info: Option<&ShipInfo>, my_id: u6
         match info.kind {
             ShipKind::Pirate => Color::srgb(1.0, 0.3, 0.2),
             ShipKind::Police => Color::srgb(0.3, 0.6, 1.0),
+            ShipKind::Merchant => Color::srgb(1.0, 0.82, 0.38),
+            ShipKind::Defender => Color::srgb(0.4, 0.85, 1.0),
+            ShipKind::Explorer => Color::srgb(0.75, 0.55, 1.0),
             ShipKind::Player => {
                 if info.owner == Some(my_id) {
                     Color::srgb(1.0, 1.0, 1.0)

@@ -82,4 +82,15 @@ pub enum ScenarioStep {
         #[serde(default)]
         size: Option<String>,
     },
+    AssertNpcKindsPresent {
+        kinds: Vec<String>,
+    },
+    HailNearestShip {
+        #[serde(default)]
+        kind: Option<String>,
+    },
+    ProvokeNearestNpc {
+        #[serde(default)]
+        kind: Option<String>,
+    },
 }

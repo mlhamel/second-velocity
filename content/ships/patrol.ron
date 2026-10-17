@@ -1,6 +1,8 @@
 (
     id: "patrol",
     name: "Patrol Cutter",
+    race: "terran",
+    size: Medium,
     description: "A Confederation cutter with fresh paint, current papers, and no sense of humor.",
     price: 24000,
     mass: 11.0,

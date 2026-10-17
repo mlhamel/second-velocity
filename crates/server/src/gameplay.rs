@@ -8,10 +8,10 @@ use evr_core::{Account, FlightModel, ShipState, WeaponState};
 use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, WeaponDef};
 use evr_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt,
-    EncounterOption, Explosion, Fuel, Heading, Hull, LoginRequest, LoginResponse, Meteorite,
-    MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget, RequestLand,
-    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
-    ShipInfo, ShipKind, SystemMembership,
+    EncounterOption, Explosion, Fuel, HailShip, Heading, Hull, LoginRequest, LoginResponse,
+    Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget,
+    RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle,
+    SetTurn, SetWarp, ShipInfo, ShipKind, SystemMembership,
 };
 
 use crate::Content;
@@ -31,6 +31,7 @@ pub const SHIP_RADIUS: f32 = 14.0;
 pub const PLANET_RADIUS: f32 = 90.0;
 pub const PLANET_OFFSET_X: f32 = 500.0;
 pub const LAND_RANGE: f32 = 220.0;
+pub const HAIL_RANGE: f32 = 240.0;
 pub const PIRATE_SIGHT_RANGE: f32 = 900.0;
 pub const PIRATE_FIRE_RANGE: f32 = 300.0;
 pub const PIRATE_RESPAWN_SECS: f32 = 15.0;
@@ -43,6 +44,32 @@ pub const DEFAULT_ENCOUNTER_SEED: u64 = 0;
 pub const TRIBUTE_CREDITS: u32 = 50;
 pub const OFFER_QTY: u32 = 3;
 pub const METEORITE_HIT_COOLDOWN_SECS: f32 = 0.6;
+pub const NPC_OWNER_BASE: u64 = 10_000;
+pub const MERCHANT_LANE_Y: f32 = 220.0;
+
+#[derive(Component, Debug, Clone)]
+pub enum NpcBrain {
+    Merchant {
+        commodity: String,
+        qty: u32,
+        target_system: String,
+        target_planet: String,
+        target_pos: Vec2,
+        dwell_timer: f32,
+        route_step: u32,
+    },
+    Defender {
+        patrol_center: Vec2,
+        waypoint_angle: f32,
+    },
+    Explorer {
+        current_system: String,
+        target_system: String,
+        target_pos: Vec2,
+        step: u32,
+        visited: Vec<String>,
+    },
+}
 
 #[derive(Component, Debug, Clone)]
 pub struct MeteoriteMotion {
@@ -98,6 +125,10 @@ enum PendingEncounter {
     },
     TurnIn {
         quest_id: String,
+    },
+    ShipHail {
+        ship_name: String,
+        fuel_gift: f32,
     },
 }
 
@@ -165,10 +196,12 @@ pub struct PlayerName(pub String);
 #[derive(Component)]
 struct ProjectileMotion {
     speed: f32,
+    shooter_entity: Option<Entity>,
+    shooter_kind: ShipKind,
 }
 
 #[derive(Component)]
-struct Aggro(u64);
+pub struct Aggro(pub u64);
 
 #[derive(Resource, Default)]
 struct PlayerRecord {
@@ -216,6 +249,7 @@ impl Plugin for GameplayPlugin {
             .add_observer(on_buy_commodity)
             .add_observer(on_sell_commodity)
             .add_observer(on_set_warp)
+            .add_observer(on_hail_ship)
             .add_observer(on_respond_to_encounter)
             .add_observer(on_login_request)
             .add_systems(OnEnter(ServerState::Running), spawn_world)
@@ -226,7 +260,7 @@ impl Plugin for GameplayPlugin {
                     apply_ship_control,
                     meteorite_movement,
                     update_system_membership,
-                    pirate_ai,
+                    npc_ai,
                     fire_weapons,
                     projectile_flight,
                     projectile_hits,
@@ -245,7 +279,7 @@ impl Plugin for GameplayPlugin {
     }
 }
 
-fn spawn_ship(
+pub fn spawn_ship(
     commands: &mut Commands,
     pack: &ContentPack,
     ship_id: &str,
@@ -290,7 +324,11 @@ fn spawn_ship(
         ShipInfo {
             def_id: def.id.clone(),
             kind,
-            owner,
+            owner: if kind == ShipKind::Player {
+                owner
+            } else {
+                None
+            },
             name: def.name.clone(),
         },
         SystemMembership(system.to_owned()),
@@ -298,8 +336,7 @@ fn spawn_ship(
 
     if kind == ShipKind::Player {
         entity.insert(PlayerShip);
-    }
-    if kind == ShipKind::Pirate {
+    } else {
         entity.insert(Npc);
     }
     if let Some(outfit) = def
@@ -318,6 +355,45 @@ fn spawn_ship(
     }
 
     entity.id()
+}
+
+pub fn planet_trade_waypoint(pack: &ContentPack, system_id: &str) -> (String, Vec2) {
+    let Some(sys) = pack.system(system_id) else {
+        return ("unknown".to_owned(), Vec2::ZERO);
+    };
+    let planet_id = sys
+        .planets
+        .first()
+        .map_or_else(|| "station".to_owned(), |p| p.id.clone());
+    let pos = Vec2::new(
+        sys.position.0 + PLANET_OFFSET_X,
+        sys.position.1 + MERCHANT_LANE_Y,
+    );
+    (planet_id, pos)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn spawn_npc_role(
+    commands: &mut Commands,
+    pack: &ContentPack,
+    ship_id: &str,
+    kind: ShipKind,
+    npc_owner: u64,
+    system: &str,
+    offset: Vec2,
+    brain: NpcBrain,
+) -> Entity {
+    let entity = spawn_ship(
+        commands,
+        pack,
+        ship_id,
+        kind,
+        Some(npc_owner),
+        system,
+        offset,
+    );
+    commands.entity(entity).insert(brain);
+    entity
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -436,6 +512,188 @@ fn spawn_world(mut commands: Commands, content: Res<Content>) {
         PIRATE_SYSTEM,
         Vec2::new(0.0, -400.0),
     );
+    spawn_living_galaxy_npcs(&mut commands, pack);
+}
+
+fn spawn_living_galaxy_npcs(commands: &mut Commands, pack: &ContentPack) {
+    let mut next_owner = NPC_OWNER_BASE;
+    let mut alloc_owner = || {
+        let id = next_owner;
+        next_owner += 1;
+        id
+    };
+
+    // 1. Merchants hauling stock between star systems across 5 races & size classes:
+    let merchant_roster = [
+        (
+            "vellari-clipper",
+            "sol",
+            Vec2::new(140.0, MERCHANT_LANE_Y),
+            "alpha-centauri",
+            "food",
+            8,
+        ),
+        (
+            "terran-hauler",
+            "alpha-centauri",
+            Vec2::new(180.0, MERCHANT_LANE_Y),
+            "sol",
+            "machinery",
+            12,
+        ),
+        (
+            "terran-bulk-freighter",
+            "vega",
+            Vec2::new(220.0, MERCHANT_LANE_Y),
+            "sirius",
+            "medicine",
+            24,
+        ),
+        (
+            "vellari-ark",
+            "sirius",
+            Vec2::new(160.0, MERCHANT_LANE_Y),
+            "procyon",
+            "food",
+            18,
+        ),
+        (
+            "korath-barge",
+            "barnard",
+            Vec2::new(200.0, MERCHANT_LANE_Y),
+            "wolf-359",
+            "machinery",
+            15,
+        ),
+        (
+            "sylph-cantor",
+            "new-kashmir",
+            Vec2::new(180.0, MERCHANT_LANE_Y),
+            "polaris",
+            "medicine",
+            14,
+        ),
+    ];
+
+    for (idx, (ship_id, start_sys, offset, dest_sys, commodity, qty)) in
+        merchant_roster.into_iter().enumerate()
+    {
+        if pack.ship(ship_id).is_none()
+            || pack.system(start_sys).is_none()
+            || pack.system(dest_sys).is_none()
+        {
+            continue;
+        }
+        let (target_planet, target_pos) = planet_trade_waypoint(pack, dest_sys);
+        spawn_npc_role(
+            commands,
+            pack,
+            ship_id,
+            ShipKind::Merchant,
+            alloc_owner(),
+            start_sys,
+            offset,
+            NpcBrain::Merchant {
+                commodity: commodity.to_owned(),
+                qty,
+                target_system: dest_sys.to_owned(),
+                target_planet,
+                target_pos,
+                dwell_timer: 1.5,
+                route_step: idx as u32,
+            },
+        );
+    }
+
+    // 2. Defenders patrolling systems and hunting pirates:
+    let defender_roster = [
+        ("terran-gunboat", "sol", Vec2::new(-160.0, 230.0), 0.0_f32),
+        ("korath-ironclad", "vega", Vec2::new(-180.0, 240.0), 1.2_f32),
+        (
+            "korath-dreadnought",
+            "wolf-359",
+            Vec2::new(-200.0, 250.0),
+            2.4_f32,
+        ),
+        (
+            "auroran-corsair",
+            "tarsis",
+            Vec2::new(-150.0, 230.0),
+            0.8_f32,
+        ),
+        (
+            "auroran-galleon",
+            "polaris",
+            Vec2::new(-210.0, 260.0),
+            1.9_f32,
+        ),
+    ];
+
+    for (ship_id, sys_id, offset, angle) in defender_roster {
+        let Some(sys) = pack.system(sys_id) else {
+            continue;
+        };
+        if pack.ship(ship_id).is_none() {
+            continue;
+        }
+        let patrol_center = Vec2::new(sys.position.0, sys.position.1 + 230.0);
+        spawn_npc_role(
+            commands,
+            pack,
+            ship_id,
+            ShipKind::Defender,
+            alloc_owner(),
+            sys_id,
+            offset,
+            NpcBrain::Defender {
+                patrol_center,
+                waypoint_angle: angle,
+            },
+        );
+    }
+
+    // 3. Explorers traveling from system to system discovering the galaxy:
+    let explorer_roster = [
+        ("sylph-wanderer", "sol", Vec2::new(90.0, -220.0), "vega"),
+        (
+            "terran-surveyor",
+            "procyon",
+            Vec2::new(110.0, -220.0),
+            "sirius",
+        ),
+        (
+            "vellari-seeker",
+            "ross-154",
+            Vec2::new(100.0, -220.0),
+            "barnard",
+        ),
+    ];
+
+    for (idx, (ship_id, start_sys, offset, target_sys)) in explorer_roster.into_iter().enumerate() {
+        let Some(dest) = pack.system(target_sys) else {
+            continue;
+        };
+        if pack.ship(ship_id).is_none() || pack.system(start_sys).is_none() {
+            continue;
+        }
+        let target_pos = Vec2::new(dest.position.0 + 120.0, dest.position.1 - 220.0);
+        spawn_npc_role(
+            commands,
+            pack,
+            ship_id,
+            ShipKind::Explorer,
+            alloc_owner(),
+            start_sys,
+            offset,
+            NpcBrain::Explorer {
+                current_system: start_sys.to_owned(),
+                target_system: target_sys.to_owned(),
+                target_pos,
+                step: idx as u32,
+                visited: vec![start_sys.to_owned()],
+            },
+        );
+    }
 }
 
 fn raw_id(client_id: ClientId, clients: &Query<&NetworkId>) -> u64 {
@@ -695,6 +953,19 @@ fn apply_ship_control(
     }
 }
 
+fn steer_toward(position: Vec2, heading: f32, target: Vec2) -> (f32, f32, f32) {
+    let delta = target - position;
+    let distance = delta.length();
+    let desired = delta.y.atan2(delta.x);
+    let diff = (desired - heading + PI).rem_euclid(2.0 * PI) - PI;
+    let turn = if diff.abs() < 0.04 {
+        0.0
+    } else {
+        diff.signum()
+    };
+    (distance, diff, turn)
+}
+
 type NpcShips<'w, 's> = Query<
     'w,
     's,
@@ -702,57 +973,276 @@ type NpcShips<'w, 's> = Query<
         Entity,
         &'static Position,
         &'static Heading,
+        &'static ShipInfo,
+        &'static mut SystemMembership,
         &'static mut Control,
         Option<&'static Aggro>,
+        Option<&'static mut NpcBrain>,
     ),
     With<Npc>,
 >;
 
-fn pirate_ai(
+fn npc_ai(
     mut commands: Commands,
-    mut pirates: NpcShips,
+    time: Res<Time>,
+    content: Res<Content>,
+    mut npcs: NpcShips,
     players: Query<(Entity, &Position, &Owner, Option<&DockedAt>), With<PlayerShip>>,
 ) {
-    for (entity, position, heading, mut control, aggro) in &mut pirates {
+    let dt = time.delta_secs();
+    let pack = &content.0;
+
+    let mut pirate_positions: Vec<(Entity, Vec2, String)> = Vec::new();
+    let mut defender_positions: Vec<(Entity, Vec2, String)> = Vec::new();
+    for (entity, pos, _, info, membership, _, _, _) in &npcs {
+        if info.kind == ShipKind::Pirate {
+            pirate_positions.push((entity, pos.0, membership.0.clone()));
+        } else if info.kind == ShipKind::Defender {
+            defender_positions.push((entity, pos.0, membership.0.clone()));
+        }
+    }
+
+    for (entity, position, heading, info, mut membership, mut control, aggro, brain) in &mut npcs {
         control.throttle = 0.0;
         control.turn = 0.0;
         control.firing = false;
+        control.warp = false;
 
-        let target = match aggro {
-            Some(Aggro(wanted_owner)) => {
-                let Some(entry) = players
-                    .iter()
-                    .find(|(_, _, target_owner, _)| target_owner.0 == *wanted_owner)
-                else {
+        // 1. Retaliation / Aggro against an attacker (universal across all NPC roles):
+        if let Some(Aggro(wanted_owner)) = aggro {
+            let Some((_, target_pos, _, docked)) = players
+                .iter()
+                .find(|(_, _, target_owner, _)| target_owner.0 == *wanted_owner)
+            else {
+                if info.kind == ShipKind::Police {
                     commands.entity(entity).despawn();
                     continue;
-                };
-                if entry.3.is_some() {
+                }
+                commands.entity(entity).remove::<Aggro>();
+                continue;
+            };
+            if docked.is_some() {
+                if matches!(
+                    info.kind,
+                    ShipKind::Merchant | ShipKind::Defender | ShipKind::Explorer
+                ) {
+                    commands.entity(entity).remove::<Aggro>();
+                } else {
                     continue;
                 }
-                Some(entry)
+            } else {
+                let (distance, diff, turn) = steer_toward(position.0, heading.0, target_pos.0);
+                if distance <= PIRATE_SIGHT_RANGE {
+                    control.turn = turn;
+                    control.throttle = if distance > 200.0 { 1.0 } else { 0.3 };
+                    control.firing = distance < PIRATE_FIRE_RANGE && diff.abs() < 0.35;
+                    continue;
+                } else if info.kind != ShipKind::Police && info.kind != ShipKind::Pirate {
+                    commands.entity(entity).remove::<Aggro>();
+                } else {
+                    continue;
+                }
             }
-            None => players
+        }
+
+        // 2. Pirate behavior: hunt undocked players or return fire at nearby defenders:
+        if info.kind == ShipKind::Pirate {
+            let nearest_player = players
                 .iter()
                 .filter(|(_, _, _, docked)| docked.is_none())
-                .min_by_key(|(_, target_position, _, _)| {
-                    position.0.distance(target_position.0).to_bits()
-                }),
-        };
-        let Some((_, target, _, _)) = target else {
-            continue;
-        };
-        let delta = target.0 - position.0;
-        let distance = delta.length();
-        if distance > PIRATE_SIGHT_RANGE {
+                .map(|(_, pos, _, _)| pos.0)
+                .min_by_key(|pos| position.0.distance(*pos).to_bits());
+            let nearest_defender = defender_positions
+                .iter()
+                .filter(|(_, pos, sys)| {
+                    *sys == membership.0 || position.0.distance(*pos) <= PIRATE_SIGHT_RANGE
+                })
+                .map(|(_, pos, _)| *pos)
+                .min_by_key(|pos| position.0.distance(*pos).to_bits());
+
+            let target = match (nearest_player, nearest_defender) {
+                (Some(p), Some(d)) => {
+                    if position.0.distance(p) <= position.0.distance(d) {
+                        Some(p)
+                    } else {
+                        Some(d)
+                    }
+                }
+                (Some(p), None) => Some(p),
+                (None, Some(d)) => Some(d),
+                (None, None) => None,
+            };
+            let Some(target_pos) = target else {
+                continue;
+            };
+            let (distance, diff, turn) = steer_toward(position.0, heading.0, target_pos);
+            if distance > PIRATE_SIGHT_RANGE {
+                continue;
+            }
+            control.turn = turn;
+            control.throttle = if distance > 200.0 { 1.0 } else { 0.3 };
+            control.firing = distance < PIRATE_FIRE_RANGE && diff.abs() < 0.35;
             continue;
         }
 
-        let desired = delta.y.atan2(delta.x);
-        let diff = (desired - heading.0 + PI).rem_euclid(2.0 * PI) - PI;
-        control.turn = diff.signum();
-        control.throttle = if distance > 200.0 { 1.0 } else { 0.3 };
-        control.firing = distance < PIRATE_FIRE_RANGE && diff.abs() < 0.35;
+        // 3. Autonomous role brains (Merchant, Defender, Explorer):
+        let Some(mut brain) = brain else {
+            continue;
+        };
+        match &mut *brain {
+            NpcBrain::Defender {
+                patrol_center,
+                waypoint_angle,
+            } => {
+                let target_pirate = pirate_positions
+                    .iter()
+                    .filter(|(p_ent, p_pos, p_sys)| {
+                        *p_ent != entity
+                            && (*p_sys == membership.0
+                                || position.0.distance(*p_pos) <= PIRATE_SIGHT_RANGE)
+                    })
+                    .min_by_key(|(_, p_pos, _)| position.0.distance(*p_pos).to_bits());
+
+                if let Some((_, pirate_pos, _)) = target_pirate {
+                    let (distance, diff, turn) = steer_toward(position.0, heading.0, *pirate_pos);
+                    if distance <= PIRATE_SIGHT_RANGE {
+                        control.turn = turn;
+                        control.throttle = if distance > 180.0 { 1.0 } else { 0.35 };
+                        control.firing = distance < PIRATE_FIRE_RANGE && diff.abs() < 0.35;
+                        continue;
+                    }
+                }
+
+                let waypoint = *patrol_center
+                    + Vec2::new(waypoint_angle.cos() * 200.0, waypoint_angle.sin() * 80.0);
+                let (distance, diff, turn) = steer_toward(position.0, heading.0, waypoint);
+                if distance < 65.0 {
+                    *waypoint_angle = (*waypoint_angle + 1.25).rem_euclid(2.0 * PI);
+                }
+                control.turn = turn;
+                control.throttle = if diff.abs() < 0.7 { 0.55 } else { 0.2 };
+            }
+            NpcBrain::Merchant {
+                commodity,
+                qty,
+                target_system,
+                target_planet,
+                target_pos,
+                dwell_timer,
+                route_step,
+            } => {
+                if let Some(sys) = pack.system(target_system) {
+                    let sys_center = Vec2::new(sys.position.0, sys.position.1);
+                    if position.0.distance(sys_center) < SYSTEM_MEMBERSHIP_RADIUS
+                        && membership.0 != *target_system
+                    {
+                        membership.0 = target_system.clone();
+                    }
+                }
+
+                let (distance, diff, turn) = steer_toward(position.0, heading.0, *target_pos);
+                if distance <= 95.0 {
+                    control.throttle = 0.0;
+                    control.turn = 0.0;
+                    *dwell_timer -= dt;
+                    if *dwell_timer <= 0.0 {
+                        *dwell_timer = 1.5;
+                        *route_step = route_step.wrapping_add(1);
+                        let arrived_system = target_system.clone();
+                        membership.0 = arrived_system.clone();
+
+                        const COMMODITIES: [&str; 3] = ["food", "machinery", "medicine"];
+                        let next_comm = pack
+                            .system(&arrived_system)
+                            .and_then(|s| s.planets.first())
+                            .and_then(|p| {
+                                if p.commodities.is_empty() {
+                                    None
+                                } else {
+                                    Some(
+                                        p.commodities[(*route_step as usize) % p.commodities.len()]
+                                            .id
+                                            .clone(),
+                                    )
+                                }
+                            })
+                            .unwrap_or_else(|| {
+                                COMMODITIES[(*route_step as usize) % COMMODITIES.len()].to_owned()
+                            });
+                        *commodity = next_comm;
+                        *qty = 6 + (*route_step % 4) * 3;
+
+                        let next_sys = pack
+                            .system(&arrived_system)
+                            .and_then(|s| {
+                                if s.links.is_empty() {
+                                    None
+                                } else {
+                                    Some(s.links[(*route_step as usize) % s.links.len()].clone())
+                                }
+                            })
+                            .unwrap_or_else(|| PLAYER_SYSTEM.to_owned());
+                        let (next_planet, next_pos) = planet_trade_waypoint(pack, &next_sys);
+                        *target_system = next_sys;
+                        *target_planet = next_planet;
+                        *target_pos = next_pos;
+                    }
+                } else {
+                    control.turn = turn;
+                    control.throttle = if diff.abs() < 0.65 { 0.85 } else { 0.25 };
+                }
+            }
+            NpcBrain::Explorer {
+                current_system,
+                target_system,
+                target_pos,
+                step,
+                visited,
+            } => {
+                if let Some(sys) = pack.system(target_system) {
+                    let sys_center = Vec2::new(sys.position.0, sys.position.1);
+                    if position.0.distance(sys_center) < SYSTEM_MEMBERSHIP_RADIUS
+                        && membership.0 != *target_system
+                    {
+                        membership.0 = target_system.clone();
+                    }
+                }
+
+                let (distance, diff, turn) = steer_toward(position.0, heading.0, *target_pos);
+                if distance <= 110.0 {
+                    let arrived = target_system.clone();
+                    *current_system = arrived.clone();
+                    membership.0 = arrived.clone();
+                    if !visited.contains(&arrived) {
+                        visited.push(arrived.clone());
+                    }
+                    *step = step.wrapping_add(1);
+                    let next_sys = pack
+                        .system(&arrived)
+                        .and_then(|s| {
+                            if s.links.is_empty() {
+                                None
+                            } else {
+                                s.links
+                                    .iter()
+                                    .find(|link| !visited.contains(link))
+                                    .cloned()
+                                    .or_else(|| {
+                                        Some(s.links[(*step as usize) % s.links.len()].clone())
+                                    })
+                            }
+                        })
+                        .unwrap_or_else(|| PLAYER_SYSTEM.to_owned());
+                    if let Some(dest) = pack.system(&next_sys) {
+                        *target_pos = Vec2::new(dest.position.0 + 120.0, dest.position.1 - 220.0);
+                    }
+                    *target_system = next_sys;
+                } else {
+                    control.turn = turn;
+                    control.throttle = if diff.abs() < 0.65 { 0.9 } else { 0.3 };
+                }
+            }
+        }
     }
 }
 
@@ -760,8 +1250,10 @@ type FiringShips<'w, 's> = Query<
     'w,
     's,
     (
+        Entity,
         &'static Control,
         &'static Owner,
+        &'static ShipInfo,
         &'static Ship,
         &'static mut Blaster,
     ),
@@ -770,7 +1262,7 @@ type FiringShips<'w, 's> = Query<
 
 fn fire_weapons(mut commands: Commands, time: Res<Time>, mut ships: FiringShips) {
     let dt = time.delta_secs();
-    for (control, owner, ship, mut blaster) in &mut ships {
+    for (entity, control, owner, info, ship, mut blaster) in &mut ships {
         blaster.state.tick(dt);
         let cooldown = blaster.def.cooldown;
         if control.firing && blaster.state.try_fire(cooldown) {
@@ -784,6 +1276,8 @@ fn fire_weapons(mut commands: Commands, time: Res<Time>, mut ships: FiringShips)
                 },
                 ProjectileMotion {
                     speed: blaster.def.projectile_speed,
+                    shooter_entity: Some(entity),
+                    shooter_kind: info.kind,
                 },
                 Position(ship.0.position + direction * SHIP_RADIUS),
                 Heading(ship.0.rotation),
@@ -818,7 +1312,7 @@ fn projectile_flight(
 fn projectile_hits(
     mut commands: Commands,
     content: Res<Content>,
-    projectiles: Query<(Entity, &Position, &Heading, &Projectile)>,
+    projectiles: Query<(Entity, &Position, &Heading, &Projectile, &ProjectileMotion)>,
     aggros: Query<&Aggro>,
     ships: Query<(Entity, &ShipInfo, Option<&ClientRef>), With<Ship>>,
     mut hittable: Query<(&mut Ship, &mut LastDamagedBy, Option<&mut Wallet>), Without<DockedAt>>,
@@ -833,13 +1327,23 @@ fn projectile_hits(
 ) {
     let mut ship_hits = Vec::new();
     let mut meteorite_hits = Vec::new();
-    for (projectile_entity, position, heading, projectile) in &projectiles {
+    for (projectile_entity, position, heading, projectile, motion) in &projectiles {
         let mut hit_ship = false;
         for (ship_entity, info, _) in &ships {
-            let is_shooter = info.owner == Some(projectile.owner)
-                || (projectile.owner == 0 && info.kind != ShipKind::Player);
-            if is_shooter {
+            if motion.shooter_entity == Some(ship_entity) {
                 continue;
+            }
+            if info.owner == Some(projectile.owner) {
+                continue;
+            }
+            // Prevent NPC friendly fire except between Pirates and Defenders:
+            if motion.shooter_kind != ShipKind::Player && info.kind != ShipKind::Player {
+                let valid_npc_vs_npc = (motion.shooter_kind == ShipKind::Defender
+                    && info.kind == ShipKind::Pirate)
+                    || (motion.shooter_kind == ShipKind::Pirate && info.kind == ShipKind::Defender);
+                if !valid_npc_vs_npc {
+                    continue;
+                }
             }
             if let Ok((ship, _, _)) = hittable.get(ship_entity)
                 && position.0.distance(ship.0.position) <= SHIP_RADIUS
@@ -849,6 +1353,7 @@ fn projectile_hits(
                     ship_entity,
                     projectile.damage,
                     projectile.owner,
+                    motion.shooter_kind,
                 ));
                 hit_ship = true;
                 break;
@@ -893,13 +1398,13 @@ fn projectile_hits(
         }
     }
 
-    for (projectile_entity, victim_entity, damage, attacker_owner) in ship_hits {
+    for (projectile_entity, victim_entity, damage, attacker_owner, shooter_kind) in ship_hits {
         commands.entity(projectile_entity).despawn();
         let Ok((mut victim_ship, mut last_damaged, _)) = hittable.get_mut(victim_entity) else {
             continue;
         };
         victim_ship.0.apply_damage(damage);
-        if attacker_owner != 0 {
+        if attacker_owner != 0 && shooter_kind == ShipKind::Player {
             last_damaged.0 = Some(attacker_owner);
         }
 
@@ -910,7 +1415,42 @@ fn projectile_hits(
             "server: projectile from owner={attacker_owner} hit '{}' ({:?}) for {damage:.1} dmg (shields={:.1}, armor={:.1})",
             victim_info.name, victim_info.kind, victim_ship.0.shields, victim_ship.0.armor
         );
+
+        // Universal NPC retaliation when fired upon by a player:
+        if shooter_kind == ShipKind::Player
+            && attacker_owner != 0
+            && victim_info.kind != ShipKind::Player
+        {
+            let already_aggro = aggros
+                .get(victim_entity)
+                .is_ok_and(|existing| existing.0 == attacker_owner);
+            commands.entity(victim_entity).insert(Aggro(attacker_owner));
+            if !already_aggro
+                && matches!(
+                    victim_info.kind,
+                    ShipKind::Merchant | ShipKind::Defender | ShipKind::Explorer
+                )
+                && let Some((attacker_entity, _, Some(client_ref))) = ships
+                    .iter()
+                    .find(|(_, info, _)| info.owner == Some(attacker_owner))
+            {
+                commands
+                    .entity(attacker_entity)
+                    .remove::<(ChiefEncounter, PendingEncounter)>();
+                notice(
+                    &mut commands,
+                    ClientId::Client(client_ref.0),
+                    format!(
+                        "{} ({}) powers weapons and returns fire!",
+                        victim_info.name,
+                        victim_info.kind.as_str()
+                    ),
+                );
+            }
+        }
+
         let is_pvp = victim_info.kind == ShipKind::Player
+            && shooter_kind == ShipKind::Player
             && attacker_owner != 0
             && victim_info.owner != Some(attacker_owner);
         if !is_pvp {
@@ -1051,9 +1591,10 @@ fn fragment_meteorite(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn meteorite_ship_collisions(
     mut commands: Commands,
-    mut ships: Query<(&mut Ship, &ShipInfo), Without<DockedAt>>,
+    mut ships: Query<(&mut Ship, &ShipInfo), (With<PlayerShip>, Without<DockedAt>)>,
     mut meteorites: Query<(
         Entity,
         &Position,
@@ -1270,7 +1811,7 @@ fn ship_deaths(
                 pirate_respawn.0 = Some(PIRATE_RESPAWN_SECS);
                 commands.entity(entity).despawn();
             }
-            ShipKind::Police => {
+            ShipKind::Police | ShipKind::Merchant | ShipKind::Defender | ShipKind::Explorer => {
                 commands.entity(entity).despawn();
             }
         }
@@ -1765,16 +2306,214 @@ fn on_request_lift_off(
         .remove::<(DockedAt, ChiefEncounter, PendingEncounter)>();
 }
 
+fn race_greeting(race: &str) -> &'static str {
+    match race {
+        "vellari" => "Solar winds favor your sails, traveler.",
+        "korath" => "State your business quickly—our foundry reactors run hot.",
+        "sylph" => "The harmonic currents carry your signal clearly across the void.",
+        "auroran" => "Keep your shields steady and your transponder bright, outlander.",
+        _ => "Reading you five-by-five on open civilian comms.",
+    }
+}
+
+type HailingPlayers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Owner,
+        &'static Position,
+        Option<&'static DockedAt>,
+    ),
+    With<PlayerShip>,
+>;
+
+type HailableNpcs<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Position,
+        &'static ShipInfo,
+        Option<&'static Aggro>,
+        Option<&'static NpcBrain>,
+    ),
+    With<Npc>,
+>;
+
+fn on_hail_ship(
+    trigger: On<FromClient<HailShip>>,
+    mut commands: Commands,
+    clients: Query<&NetworkId>,
+    content: Res<Content>,
+    players: HailingPlayers,
+    npcs: HailableNpcs,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let Some((player_entity, _, player_pos, docked)) = players
+        .iter()
+        .find(|(_, ship_owner, _, _)| ship_owner.0 == owner)
+    else {
+        return;
+    };
+    if docked.is_some() {
+        notice(
+            &mut commands,
+            trigger.client_id,
+            "Lift off before hailing passing vessels.",
+        );
+        return;
+    }
+
+    let friendly = npcs
+        .iter()
+        .filter(|(_, pos, info, aggro, _)| {
+            aggro.is_none()
+                && info.kind != ShipKind::Pirate
+                && player_pos.0.distance(pos.0) <= HAIL_RANGE
+        })
+        .min_by_key(|(_, pos, _, _, _)| player_pos.0.distance(pos.0).to_bits());
+
+    let Some((_, _, npc_info, _, npc_brain)) = friendly else {
+        let hostile_near = npcs.iter().any(|(_, pos, info, aggro, _)| {
+            (aggro.is_some() || info.kind == ShipKind::Pirate)
+                && player_pos.0.distance(pos.0) <= HAIL_RANGE
+        });
+        if hostile_near {
+            notice(
+                &mut commands,
+                trigger.client_id,
+                "Static and weapons lock—they aren't interested in talking.",
+            );
+        } else {
+            notice(
+                &mut commands,
+                trigger.client_id,
+                "No friendly vessel within hailing range.",
+            );
+        }
+        return;
+    };
+
+    let ship_def = content.0.ship(&npc_info.def_id);
+    let race = ship_def.map_or("terran", |d| d.race.as_str());
+    let portrait = ship_def.and_then(|d| d.sprite.clone());
+    let greeting = race_greeting(race);
+    let speaker = format!("{} ({})", npc_info.name, race);
+
+    let (encounter, pending) = match npc_brain {
+        Some(NpcBrain::Merchant {
+            commodity,
+            qty,
+            target_system,
+            ..
+        }) => {
+            let offer_qty = (*qty).clamp(1, OFFER_QTY);
+            let cost = offer_qty * 12;
+            (
+                ChiefEncounter {
+                    chief_name: speaker.clone(),
+                    portrait,
+                    mood: ChiefMood::Offer,
+                    text: format!(
+                        "{greeting}\n\n\"We're hauling {qty} tons of {commodity} toward {target_system}. We can transfer {offer_qty} {commodity} for {cost} cr if your hold has room.\""
+                    ),
+                    options: vec![
+                        EncounterOption {
+                            id: "accept_offer".to_owned(),
+                            label: format!("Buy {offer_qty} {commodity} ({cost} cr)"),
+                        },
+                        EncounterOption {
+                            id: "decline".to_owned(),
+                            label: "Wish safe passage".to_owned(),
+                        },
+                    ],
+                },
+                PendingEncounter::Offer {
+                    chief_name: speaker.clone(),
+                    commodity: commodity.clone(),
+                    qty: offer_qty,
+                    cost,
+                },
+            )
+        }
+        Some(NpcBrain::Explorer {
+            target_system,
+            visited,
+            ..
+        }) => {
+            let charted = visited.len();
+            (
+                ChiefEncounter {
+                    chief_name: speaker.clone(),
+                    portrait,
+                    mood: ChiefMood::Offer,
+                    text: format!(
+                        "{greeting}\n\n\"Our survey array has charted {charted} systems so far; next vector is {target_system}. Take a spare fuel cell for the hyperlanes.\""
+                    ),
+                    options: vec![
+                        EncounterOption {
+                            id: "accept_hail_gift".to_owned(),
+                            label: "Receive telemetry & fuel cell (+25 fuel)".to_owned(),
+                        },
+                        EncounterOption {
+                            id: "decline".to_owned(),
+                            label: "Clear comms".to_owned(),
+                        },
+                    ],
+                },
+                PendingEncounter::ShipHail {
+                    ship_name: speaker.clone(),
+                    fuel_gift: 25.0,
+                },
+            )
+        }
+        _ => (
+            ChiefEncounter {
+                chief_name: speaker.clone(),
+                portrait,
+                mood: ChiefMood::Offer,
+                text: format!(
+                    "{greeting}\n\n\"Patrol sweeps are active across this sector. Keep your weapons holstered near civilian hulls—here's a reserve fuel transfer.\""
+                ),
+                options: vec![
+                    EncounterOption {
+                        id: "accept_hail_gift".to_owned(),
+                        label: "Sync patrol telemetry (+15 fuel)".to_owned(),
+                    },
+                    EncounterOption {
+                        id: "decline".to_owned(),
+                        label: "Close channel".to_owned(),
+                    },
+                ],
+            },
+            PendingEncounter::ShipHail {
+                ship_name: speaker.clone(),
+                fuel_gift: 15.0,
+            },
+        ),
+    };
+
+    info!("server: owner={owner} hailed '{speaker}'");
+    notice(
+        &mut commands,
+        trigger.client_id,
+        format!("Opened comms channel with {speaker}."),
+    );
+    commands.entity(player_entity).insert((encounter, pending));
+}
+
 type EncounterShips<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
         &'static Owner,
-        &'static DockedAt,
+        Option<&'static DockedAt>,
         &'static ShipSpec,
         &'static ChiefEncounter,
         &'static PendingEncounter,
+        &'static mut Ship,
         &'static mut Wallet,
         &'static mut ActiveQuests,
     ),
@@ -1789,10 +2528,19 @@ fn on_respond_to_encounter(
 ) {
     let owner = raw_id(trigger.client_id, &clients);
     let raw_choice = trigger.event().choice.trim();
-    let Some((ship_entity, _, docked, spec, encounter, pending, mut wallet, mut active_quests)) =
-        ships
-            .iter_mut()
-            .find(|(_, ship_owner, _, _, _, _, _, _)| ship_owner.0 == owner)
+    let Some((
+        ship_entity,
+        _,
+        docked,
+        spec,
+        encounter,
+        pending,
+        mut ship,
+        mut wallet,
+        mut active_quests,
+    )) = ships
+        .iter_mut()
+        .find(|(_, ship_owner, _, _, _, _, _, _, _)| ship_owner.0 == owner)
     else {
         return;
     };
@@ -1805,9 +2553,12 @@ fn on_respond_to_encounter(
     } else {
         raw_choice
     };
+    let location = docked.map_or_else(
+        || "open-space".to_owned(),
+        |d| format!("{}/{}", d.system, d.planet),
+    );
     info!(
-        "server: owner={owner} responded to encounter on {}/{} with choice='{resolved_choice}' (raw='{raw_choice}')",
-        docked.system, docked.planet
+        "server: owner={owner} responded to encounter at {location} with choice='{resolved_choice}' (raw='{raw_choice}')"
     );
 
     match pending.clone() {
@@ -1841,6 +2592,39 @@ fn on_respond_to_encounter(
                     &mut commands,
                     trigger.client_id,
                     format!("You pass on {chief_name}'s offer."),
+                );
+                commands
+                    .entity(ship_entity)
+                    .remove::<(ChiefEncounter, PendingEncounter)>();
+            }
+            _ => {
+                notice(
+                    &mut commands,
+                    trigger.client_id,
+                    "That choice isn't on the table.",
+                );
+            }
+        },
+        PendingEncounter::ShipHail {
+            ship_name,
+            fuel_gift,
+        } => match resolved_choice {
+            "accept_hail_gift" => {
+                ship.0.fuel = (ship.0.fuel + fuel_gift).min(ship.0.max_fuel);
+                notice(
+                    &mut commands,
+                    trigger.client_id,
+                    format!("Received telemetry and +{fuel_gift:.0} fuel from {ship_name}."),
+                );
+                commands
+                    .entity(ship_entity)
+                    .remove::<(ChiefEncounter, PendingEncounter)>();
+            }
+            "decline" => {
+                notice(
+                    &mut commands,
+                    trigger.client_id,
+                    format!("Closed comms channel with {ship_name}."),
                 );
                 commands
                     .entity(ship_entity)
@@ -3067,5 +3851,222 @@ mod tests {
             remaining, 0,
             "Small meteorites must disappear when destroyed"
         );
+    }
+
+    #[test]
+    fn merchant_npc_travels_and_trades_stock_between_systems() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+
+        let merchant_entity = h
+            .server
+            .world_mut()
+            .query::<(Entity, &ShipInfo, &SystemMembership)>()
+            .iter(h.server.world())
+            .find(|(_, info, sys)| info.kind == ShipKind::Merchant && sys.0 == "sol")
+            .map(|(e, _, _)| e)
+            .expect("Sol merchant must exist");
+
+        let (initial_target_sys, target_pos, initial_step) = match h
+            .server
+            .world()
+            .get::<NpcBrain>(merchant_entity)
+            .expect("merchant brain")
+        {
+            NpcBrain::Merchant {
+                target_system,
+                target_pos,
+                route_step,
+                ..
+            } => (target_system.clone(), *target_pos, *route_step),
+            other => panic!("expected Merchant brain, got {other:?}"),
+        };
+        assert_eq!(initial_target_sys, "alpha-centauri");
+
+        // Place merchant just outside its target trade waypoint so it arrives and cycles stock.
+        h.server
+            .world_mut()
+            .get_mut::<Ship>(merchant_entity)
+            .unwrap()
+            .0
+            .position = target_pos - Vec2::new(40.0, 0.0);
+
+        h.step_until(250, |h| {
+            matches!(
+                h.server.world().get::<NpcBrain>(merchant_entity),
+                Some(NpcBrain::Merchant { route_step, .. }) if *route_step > initial_step
+            )
+        });
+
+        let (new_target_sys, new_comm) = match h.server.world().get::<NpcBrain>(merchant_entity) {
+            Some(NpcBrain::Merchant {
+                target_system,
+                commodity,
+                ..
+            }) => (target_system.clone(), commodity.clone()),
+            other => panic!("expected Merchant brain, got {other:?}"),
+        };
+        assert_ne!(
+            new_target_sys, initial_target_sys,
+            "merchant must pick a new destination system after trading stock"
+        );
+        assert!(!new_comm.is_empty());
+    }
+
+    #[test]
+    fn defender_npc_fights_and_destroys_pirate() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+
+        let defender_entity = h
+            .server
+            .world_mut()
+            .query::<(Entity, &ShipInfo, &SystemMembership)>()
+            .iter(h.server.world())
+            .find(|(_, info, sys)| info.kind == ShipKind::Defender && sys.0 == "sol")
+            .map(|(e, _, _)| e)
+            .expect("Sol defender must exist");
+
+        let pirate_entity = h
+            .server
+            .world_mut()
+            .query::<(Entity, &ShipInfo)>()
+            .iter(h.server.world())
+            .find(|(_, info)| info.kind == ShipKind::Pirate)
+            .map(|(e, _)| e)
+            .expect("pirate must exist");
+
+        // Move player far away so the duel is strictly Defender vs Pirate.
+        h.set_server_ship(1, |s| {
+            s.position = Vec2::new(-5000.0, -5000.0);
+        });
+        {
+            let mut def_ship = h
+                .server
+                .world_mut()
+                .get_mut::<Ship>(defender_entity)
+                .unwrap();
+            def_ship.0.position = Vec2::new(-160.0, 230.0);
+            def_ship.0.rotation = 0.0;
+            def_ship.0.velocity = Vec2::ZERO;
+        }
+        {
+            let mut pir_ship = h.server.world_mut().get_mut::<Ship>(pirate_entity).unwrap();
+            pir_ship.0.position = Vec2::new(-40.0, 230.0);
+            pir_ship.0.shields = 8.0;
+            pir_ship.0.armor = 6.0;
+            pir_ship.0.velocity = Vec2::ZERO;
+        }
+        h.server
+            .world_mut()
+            .get_mut::<SystemMembership>(pirate_entity)
+            .unwrap()
+            .0 = "sol".to_owned();
+
+        h.step_until(250, |h| h.server.world().get_entity(pirate_entity).is_err());
+        assert!(
+            h.server.world().get_entity(defender_entity).is_ok(),
+            "defender must survive and destroy the pirate"
+        );
+    }
+
+    #[test]
+    fn explorer_npc_discovers_linked_systems() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+
+        let explorer_entity = h
+            .server
+            .world_mut()
+            .query::<(Entity, &ShipInfo, &SystemMembership)>()
+            .iter(h.server.world())
+            .find(|(_, info, sys)| info.kind == ShipKind::Explorer && sys.0 == "sol")
+            .map(|(e, _, _)| e)
+            .expect("Sol explorer must exist");
+
+        let target_pos = match h.server.world().get::<NpcBrain>(explorer_entity) {
+            Some(NpcBrain::Explorer { target_pos, .. }) => *target_pos,
+            other => panic!("expected Explorer brain, got {other:?}"),
+        };
+
+        h.server
+            .world_mut()
+            .get_mut::<Ship>(explorer_entity)
+            .unwrap()
+            .0
+            .position = target_pos - Vec2::new(30.0, 0.0);
+
+        h.step_until(150, |h| {
+            matches!(
+                h.server.world().get::<NpcBrain>(explorer_entity),
+                Some(NpcBrain::Explorer { visited, .. }) if visited.len() >= 2
+            )
+        });
+    }
+
+    #[test]
+    fn hail_friendly_npc_ship_and_firing_triggers_retaliation() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let my_ship = h.my_ship().unwrap();
+
+        let (merchant_entity, merchant_pos) = h
+            .server
+            .world_mut()
+            .query::<(Entity, &ShipInfo, &Position, &SystemMembership)>()
+            .iter(h.server.world())
+            .find(|(_, info, _, sys)| info.kind == ShipKind::Merchant && sys.0 == "sol")
+            .map(|(e, _, p, _)| (e, p.0))
+            .expect("Sol merchant must exist");
+
+        // Fly close to the merchant and hail it.
+        h.set_server_ship(1, |s| {
+            s.position = merchant_pos - Vec2::new(80.0, 0.0);
+            s.rotation = 0.0;
+            s.velocity = Vec2::ZERO;
+        });
+        for _ in 0..5 {
+            h.step();
+        }
+        h.send(HailShip);
+        h.step_until(100, |h| {
+            h.client_component::<ChiefEncounter>(my_ship).is_some()
+        });
+        let encounter = h.client_component::<ChiefEncounter>(my_ship).unwrap();
+        assert!(
+            encounter.chief_name.contains("vellari"),
+            "expected Vellari merchant hail, got {}",
+            encounter.chief_name
+        );
+
+        // Buy cargo directly from the merchant in space.
+        let credits_before = h.client_component::<AccountState>(my_ship).unwrap().credits;
+        h.send(RespondToEncounter {
+            choice: "accept_offer".into(),
+        });
+        h.step_until(100, |h| {
+            h.client_component::<ChiefEncounter>(my_ship).is_none()
+                && h.client_component::<AccountState>(my_ship)
+                    .is_some_and(|a| a.credits < credits_before)
+        });
+
+        // Now fire at the merchant and verify it immediately retaliates!
+        let current_merchant_pos = h.server.world().get::<Position>(merchant_entity).unwrap().0;
+        h.set_server_ship(1, |s| {
+            s.position = current_merchant_pos - Vec2::new(70.0, 0.0);
+            s.rotation = 0.0;
+            s.velocity = Vec2::ZERO;
+        });
+        let player_shields_before = h.client_component::<Hull>(my_ship).unwrap().shields;
+        h.send(SetFiring(true));
+        h.step_until(200, |h| {
+            h.server
+                .world()
+                .get::<Aggro>(merchant_entity)
+                .is_some_and(|a| a.0 == 1)
+                && h.client_component::<Hull>(my_ship)
+                    .is_some_and(|hull| hull.shields < player_shields_before)
+        });
+        h.send(SetFiring(false));
     }
 }

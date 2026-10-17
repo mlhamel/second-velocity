@@ -1,0 +1,20 @@
+ScenarioDef(
+    id: "living-galaxy-npcs",
+    name: "Living Galaxy NPCs: Merchants, Defenders, Explorers, Hailing & Retaliation",
+    description: "Verify multi-race Merchant, Defender, and Explorer NPC fleets are active across the galaxy, hail a passing Merchant in Sol to barter cargo mid-flight, hail an Explorer for survey telemetry, and verify NPC retaliation when fired upon.",
+    max_ticks: 2000,
+    steps: [
+        AssertAlive(true),
+        AssertSystem("sol"),
+        AssertNpcKindsPresent(kinds: ["merchant", "defender", "explorer", "pirate"]),
+        HailNearestShip(kind: Some("merchant")),
+        AssertEncounter(mood: Some("offer")),
+        Respond(choice: "accept_offer"),
+        AssertCargo(commodity: "food", min_qty: 3),
+        HailNearestShip(kind: Some("explorer")),
+        AssertEncounter(mood: Some("offer")),
+        Respond(choice: "accept_hail_gift"),
+        ProvokeNearestNpc(kind: Some("defender")),
+        AssertAlive(true),
+    ],
+)

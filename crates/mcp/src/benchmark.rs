@@ -555,6 +555,185 @@ fn execute_step(
             *assertions_passed += 1;
             Ok(())
         }
+        ScenarioStep::AssertNpcKindsPresent { kinds } => {
+            let state = harness.observe();
+            let arr = state["ships"]
+                .as_array()
+                .ok_or_else(|| "missing ships array in observe()".to_owned())?;
+            for expected_kind in kinds {
+                let present = arr
+                    .iter()
+                    .any(|s| s["kind"].as_str() == Some(expected_kind.as_str()));
+                if !present {
+                    return Err(format!(
+                        "expected NPC ship of kind '{expected_kind}' in world"
+                    ));
+                }
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::HailNearestShip { kind } => {
+            let state = harness.observe();
+            let sys = state["system"].as_str().unwrap_or("sol").to_owned();
+            let pos_arr = state["ship"]["position"]
+                .as_array()
+                .ok_or_else(|| "missing ship.position".to_owned())?;
+            let ship_pos = bevy::math::Vec2::new(
+                pos_arr[0].as_f64().unwrap_or(0.0) as f32,
+                pos_arr[1].as_f64().unwrap_or(0.0) as f32,
+            );
+
+            let (target_entity, target_pos) = {
+                let mut q = harness.server.world_mut().query::<(
+                    bevy::prelude::Entity,
+                    &evr_protocol::ShipInfo,
+                    &Position,
+                    &evr_protocol::SystemMembership,
+                    Option<&evr_server::gameplay::Aggro>,
+                )>();
+                let world = harness.server.world();
+                q.iter(world)
+                    .filter(|(_, info, _, _, aggro)| {
+                        aggro.is_none()
+                            && info.kind != evr_protocol::ShipKind::Player
+                            && info.kind != evr_protocol::ShipKind::Pirate
+                            && kind
+                                .as_ref()
+                                .is_none_or(|k| info.kind.as_str() == k.as_str())
+                    })
+                    .min_by_key(|(_, _, p, m, _)| {
+                        let same_sys_rank = if m.0 == sys { 0_u8 } else { 1_u8 };
+                        (same_sys_rank, p.0.distance(ship_pos).to_bits())
+                    })
+                    .map(|(e, _, p, _, _)| (e, p.0))
+                    .ok_or_else(|| format!("no friendly NPC ship (kind={kind:?}) in {sys}"))?
+            };
+
+            fly_to_point(
+                harness,
+                [f64::from(target_pos.x), f64::from(target_pos.y)],
+                180.0,
+                remaining_budget,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            )?;
+
+            // Match position alongside target_entity within HAIL_RANGE before triggering HailShip:
+            let refreshed_npc_pos = harness
+                .server
+                .world()
+                .get::<Position>(target_entity)
+                .map(|p| p.0);
+            if let Some(npc_pos) = refreshed_npc_pos {
+                let mut q = harness
+                    .server
+                    .world_mut()
+                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                let world = harness.server.world_mut();
+                for (info, mut s) in q.iter_mut(world) {
+                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                        s.0.position = npc_pos - bevy::math::Vec2::new(60.0, 0.0);
+                        s.0.velocity = bevy::math::Vec2::ZERO;
+                    }
+                }
+            }
+            advance_tracking(
+                harness,
+                1,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            harness.hail();
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::ProvokeNearestNpc { kind } => {
+            let state = harness.observe();
+            let sys = state["system"].as_str().unwrap_or("sol").to_owned();
+            let pos_arr = state["ship"]["position"]
+                .as_array()
+                .ok_or_else(|| "missing ship.position".to_owned())?;
+            let ship_pos = bevy::math::Vec2::new(
+                pos_arr[0].as_f64().unwrap_or(0.0) as f32,
+                pos_arr[1].as_f64().unwrap_or(0.0) as f32,
+            );
+
+            let (npc_entity, npc_pos) = {
+                let mut q = harness.server.world_mut().query::<(
+                    bevy::prelude::Entity,
+                    &evr_protocol::ShipInfo,
+                    &Position,
+                    &evr_protocol::SystemMembership,
+                )>();
+                let world = harness.server.world();
+                q.iter(world)
+                    .filter(|(_, info, _, m)| {
+                        m.0 == sys
+                            && info.kind != evr_protocol::ShipKind::Player
+                            && kind
+                                .as_ref()
+                                .is_none_or(|k| info.kind.as_str() == k.as_str())
+                    })
+                    .min_by_key(|(_, _, p, _)| p.0.distance(ship_pos).to_bits())
+                    .map(|(e, _, p, _)| (e, p.0))
+                    .ok_or_else(|| format!("no NPC ship (kind={kind:?}) in {sys}"))?
+            };
+
+            {
+                let mut q = harness
+                    .server
+                    .world_mut()
+                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                let world = harness.server.world_mut();
+                for (info, mut s) in q.iter_mut(world) {
+                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                        s.0.position = npc_pos - bevy::math::Vec2::new(75.0, 0.0);
+                        s.0.rotation = 0.0;
+                        s.0.velocity = bevy::math::Vec2::ZERO;
+                    }
+                }
+            }
+            let damage_before = *hull_damage_taken;
+            harness.set_flight(0.0, 0.0, true);
+            let mut retaliated = false;
+            for _ in 0..remaining_budget.min(200) {
+                advance_tracking(
+                    harness,
+                    1,
+                    prev_fuel,
+                    prev_hull,
+                    fuel_consumed,
+                    hull_damage_taken,
+                );
+                let aggroed = harness
+                    .server
+                    .world()
+                    .get::<evr_server::gameplay::Aggro>(npc_entity)
+                    .is_some();
+                if aggroed && *hull_damage_taken > damage_before {
+                    retaliated = true;
+                    break;
+                }
+            }
+            harness.set_flight(0.0, 0.0, false);
+            if !retaliated {
+                return Err("NPC did not retaliate after being fired upon".to_owned());
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
     }
 }
 

@@ -36,6 +36,22 @@ pub enum ShipKind {
     Player,
     Pirate,
     Police,
+    Merchant,
+    Defender,
+    Explorer,
+}
+
+impl ShipKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Player => "player",
+            Self::Pirate => "pirate",
+            Self::Police => "police",
+            Self::Merchant => "merchant",
+            Self::Defender => "defender",
+            Self::Explorer => "explorer",
+        }
+    }
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -222,6 +238,9 @@ pub struct RespondToEncounter {
 }
 
 #[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HailShip;
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
@@ -273,6 +292,7 @@ pub fn register(app: &mut App) {
         .add_client_event::<SellCommodity>(Channel::Ordered)
         .add_client_event::<SetWarp>(Channel::Ordered)
         .add_client_event::<RespondToEncounter>(Channel::Ordered)
+        .add_client_event::<HailShip>(Channel::Ordered)
         .add_client_event::<LoginRequest>(Channel::Ordered)
         .add_server_event::<LoginResponse>(Channel::Ordered)
         .add_server_event::<Notice>(Channel::Ordered)
@@ -306,6 +326,12 @@ mod tests {
             kind: ShipKind::Pirate,
             owner: None,
             name: "Turncoat".into(),
+        });
+        roundtrip(ShipInfo {
+            def_id: "vellari-clipper".into(),
+            kind: ShipKind::Merchant,
+            owner: None,
+            name: "Sun-Sail Clipper".into(),
         });
         roundtrip(AccountState {
             credits: 500,
@@ -364,6 +390,7 @@ mod tests {
         roundtrip(RespondToEncounter {
             choice: "accept_quest".into(),
         });
+        roundtrip(HailShip);
         roundtrip(LoginRequest {
             username: "alice".into(),
             password: "pass123".into(),
