@@ -1,4 +1,6 @@
-# Escape Velocity: The Return
+# Second Velocity: The Living Galaxy
+
+*One galaxy, shared by pilots and minds.*
 
 A community-shard MMO inspired by Escape Velocity (1996): 2D top-down space
 trading, missions, and combat in a shared, persistent galaxy. Rust + Bevy,

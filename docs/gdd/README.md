@@ -1,4 +1,4 @@
-# Game Design Document — Escape Velocity: The Return
+# Game Design Document — Second Velocity: The Living Galaxy
 
 Single source of truth for design. Agents: read the section relevant to your
 task before writing code or content.

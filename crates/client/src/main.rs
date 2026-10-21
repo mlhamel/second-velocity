@@ -85,7 +85,7 @@ fn main() {
             })
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Escape Velocity: The Return".to_owned(),
+                    title: "Second Velocity: The Living Galaxy".to_owned(),
                     resolution: bevy::window::WindowResolution::new(1280, 720),
                     ..default()
                 }),

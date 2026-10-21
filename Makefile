@@ -1,4 +1,4 @@
-# Escape Velocity: The Return — Workspace Makefile
+# Second Velocity: The Living Galaxy — Workspace Makefile
 
 CARGO   ?= cargo
 PYTHON  ?= python3

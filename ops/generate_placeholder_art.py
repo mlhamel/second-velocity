@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate placeholder art for EV: The Return.
+"""Generate placeholder art for Second Velocity: The Living Galaxy.
 
 Designers: these PNGs are stand-ins. Replace any file in
 assets/textures/ with your own; content/ stays untouched as long as

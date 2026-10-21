@@ -1,6 +1,6 @@
 (
     id: "evr-base",
-    name: "EV: The Return — Base Universe",
+    name: "Second Velocity — Base Universe",
     version: (0, 1, 0),
     ships: [
         "ships/shuttle.ron",

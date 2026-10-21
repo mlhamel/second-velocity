@@ -95,7 +95,7 @@ jobs:
           echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
 
           {
-            echo "## Escape Velocity: The Return — Automated Benchmark Release"
+            echo "## Second Velocity: The Living Galaxy — Automated Benchmark Release"
             echo ""
             echo "- **Timestamp:** \`${ISO_TIME}\`"
             echo "- **Commit:** \`${GITHUB_SHA}\` (${COMMIT_TITLE})"
