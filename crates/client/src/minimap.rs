@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_protocol::{PlanetTag, Position, ShipInfo, ShipKind, SystemMembership};
+use evr_protocol::{Heading, PlanetTag, Position, ShipInfo, ShipKind, SystemMembership};
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;
@@ -9,6 +9,7 @@ const MINIMAP_SIZE: f32 = 220.0;
 const MINIMAP_RANGE: f32 = 3000.0;
 const DOT_SIZE: f32 = 6.0;
 const DOT_COUNT: usize = 40;
+const PLAYER_MARKER_COLOR: Color = Color::srgb(0.35, 1.0, 0.5);
 
 #[derive(Component)]
 struct MinimapRoot;
@@ -19,12 +20,16 @@ struct MinimapDot;
 #[derive(Component)]
 struct MinimapLabel;
 
+#[derive(Component)]
+struct MinimapPlayerMarker;
+
 pub struct MinimapPlugin;
 
 impl Plugin for MinimapPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_minimap)
-            .add_systems(Update, update_minimap);
+            .add_systems(Update, update_minimap)
+            .add_systems(Update, update_player_marker);
     }
 }
 
@@ -71,6 +76,46 @@ fn spawn_minimap(mut commands: Commands) {
                     BackgroundColor(Color::NONE),
                 ));
             }
+            root.spawn((
+                MinimapPlayerMarker,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(MINIMAP_SIZE / 2.0),
+                    top: Val::Px(MINIMAP_SIZE / 2.0),
+                    width: Val::Px(0.0),
+                    height: Val::Px(0.0),
+                    ..default()
+                },
+                Visibility::Hidden,
+            ))
+            .with_children(|marker| {
+                marker.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(-2.0),
+                        top: Val::Px(-2.0),
+                        width: Val::Px(12.0),
+                        height: Val::Px(4.0),
+                        border_radius: BorderRadius::all(Val::Px(2.0)),
+                        ..default()
+                    },
+                    BackgroundColor(PLAYER_MARKER_COLOR),
+                ));
+                marker.spawn((
+                    Node {
+                        position_type: PositionType::Absolute,
+                        left: Val::Px(-4.0),
+                        top: Val::Px(-4.0),
+                        width: Val::Px(8.0),
+                        height: Val::Px(8.0),
+                        border: UiRect::all(Val::Px(1.5)),
+                        border_radius: BorderRadius::all(Val::Px(4.0)),
+                        ..default()
+                    },
+                    BackgroundColor(PLAYER_MARKER_COLOR),
+                    BorderColor::all(Color::srgba(0.0, 0.02, 0.08, 0.9)),
+                ));
+            });
         });
 }
 
@@ -169,4 +214,25 @@ fn update_minimap(
             text.0 = system_name.clone().unwrap_or("Deep Space".to_owned());
         }
     }
+}
+
+fn update_player_marker(
+    my_id: Res<MyNetworkId>,
+    mut markers: Query<(&mut UiTransform, &mut Visibility), With<MinimapPlayerMarker>>,
+    my_ships: Query<(&ShipInfo, &Heading)>,
+) {
+    let Ok((mut marker_transform, mut marker_visibility)) = markers.single_mut() else {
+        return;
+    };
+
+    let Some((_, heading)) = my_ships
+        .iter()
+        .find(|(info, _)| info.owner == Some(my_id.0))
+    else {
+        *marker_visibility = Visibility::Hidden;
+        return;
+    };
+
+    marker_transform.rotation = Rot2::radians(-heading.0);
+    *marker_visibility = Visibility::Visible;
 }
