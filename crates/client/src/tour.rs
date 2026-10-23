@@ -12,15 +12,20 @@ use evr_protocol::{
 use crate::MyNetworkId;
 use crate::screenshots::request_capture;
 
-const CAPTURE_DIR: &str = "docs/screenshots";
 const STAGE_TICK_LIMIT: u32 = 900;
+pub struct CaptureTourPlugin {
+    pub output_dir: std::path::PathBuf,
+}
 
-pub struct CaptureTourPlugin;
+#[derive(Resource)]
+struct CaptureDirectory(std::path::PathBuf);
 
 impl Plugin for CaptureTourPlugin {
     fn build(&self, app: &mut App) {
-        std::fs::create_dir_all(CAPTURE_DIR).expect("screenshot dir must be creatable");
-        app.init_resource::<Tour>().add_systems(Update, run_tour);
+        std::fs::create_dir_all(&self.output_dir).expect("screenshot dir must be creatable");
+        app.insert_resource(CaptureDirectory(self.output_dir.clone()))
+            .init_resource::<Tour>()
+            .add_systems(Update, run_tour);
     }
 }
 
@@ -79,6 +84,7 @@ fn run_tour(
     my_id: Res<MyNetworkId>,
     mut commands: Commands,
     mut tour: ResMut<Tour>,
+    capture_dir: Res<CaptureDirectory>,
     mut exit: MessageWriter<AppExit>,
     ships: TourShips,
     planets: Query<(&PlanetTag, &Position)>,
@@ -108,7 +114,14 @@ fn run_tour(
             };
             if position.0.distance(earth.0) < 380.0 {
                 commands.client_trigger(SetThrottle(0.0));
-                request_capture(&mut commands, format!("{CAPTURE_DIR}/01-flight-earth.png"));
+                request_capture(
+                    &mut commands,
+                    capture_dir
+                        .0
+                        .join("01-flight-earth.png")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
                 tour.stage = TourStage::JumpToAlpha;
                 tour.actioned = false;
                 tour.ticks = 0;
@@ -151,7 +164,14 @@ fn run_tour(
                     commands.client_trigger(SetFiring(true));
                 } else if tour.ticks > 45 {
                     commands.client_trigger(SetFiring(false));
-                    request_capture(&mut commands, format!("{CAPTURE_DIR}/02-combat.png"));
+                    request_capture(
+                        &mut commands,
+                        capture_dir
+                            .0
+                            .join("02-combat.png")
+                            .to_string_lossy()
+                            .into_owned(),
+                    );
                     tour.stage = TourStage::ApproachNewhaven;
                     tour.actioned = false;
                     tour.ticks = 0;
@@ -188,7 +208,11 @@ fn run_tour(
             if tour.ticks > 30 {
                 request_capture(
                     &mut commands,
-                    format!("{CAPTURE_DIR}/04-chief-encounter.png"),
+                    capture_dir
+                        .0
+                        .join("04-chief-encounter.png")
+                        .to_string_lossy()
+                        .into_owned(),
                 );
                 commands.client_trigger(RespondToEncounter {
                     choice: "1".to_owned(),
@@ -206,7 +230,14 @@ fn run_tour(
                     qty: 1,
                 });
             } else if tour.ticks > 45 {
-                request_capture(&mut commands, format!("{CAPTURE_DIR}/03-docked-trade.png"));
+                request_capture(
+                    &mut commands,
+                    capture_dir
+                        .0
+                        .join("03-docked-trade.png")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
                 tour.stage = TourStage::Flush;
                 tour.ticks = 0;
             }

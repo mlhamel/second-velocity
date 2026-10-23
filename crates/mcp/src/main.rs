@@ -113,6 +113,33 @@ impl GameMcp {
 
 #[tool_router(server_handler)]
 impl GameMcp {
+    #[tool(
+        description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and evr-client built alongside evr-mcp. Overwrites the four fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
+    )]
+    async fn capture_screenshots(&self) -> rmcp::model::CallToolResult {
+        let result = tokio::task::spawn_blocking(|| {
+            let root = content_root()
+                .canonicalize()
+                .map_err(|err| err.to_string())?
+                .parent()
+                .ok_or_else(|| "content directory has no parent".to_owned())?
+                .to_owned();
+            let client = std::env::current_exe()
+                .map_err(|err| err.to_string())?
+                .with_file_name("evr-client");
+            evr_mcp::screenshots::capture_readme_screenshots(&root, &client)
+        })
+        .await;
+        match result.unwrap_or_else(|error| Err(error.to_string())) {
+            Ok(paths) => rmcp::model::CallToolResult::structured(serde_json::json!({
+                "screenshots": paths,
+                "session": "separate desktop capture tour",
+            })),
+            Err(error) => rmcp::model::CallToolResult::structured_error(serde_json::json!({
+                "error": error,
+            })),
+        }
+    }
     #[tool(description = "Advance the game simulation. Ticks are ~15ms each; max 600 per call.")]
     async fn advance(&self, Parameters(AdvanceArgs { ticks }): Parameters<AdvanceArgs>) -> String {
         self.call(Command::Advance(ticks.min(MAX_TICKS))).await

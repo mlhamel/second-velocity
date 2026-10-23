@@ -115,7 +115,17 @@ fn main() {
             .chain(),
     );
     if capture_tour {
-        app.add_plugins(tour::CaptureTourPlugin);
+        let output_dir = args
+            .iter()
+            .position(|arg| arg == "--capture-dir")
+            .map(|index| {
+                std::path::PathBuf::from(
+                    args.get(index + 1)
+                        .expect("--capture-dir takes a directory"),
+                )
+            })
+            .unwrap_or_else(|| "docs/screenshots".into());
+        app.add_plugins(tour::CaptureTourPlugin { output_dir });
     }
 
     let (server_channels, client_channels) = {
