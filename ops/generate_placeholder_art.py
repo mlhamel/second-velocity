@@ -112,6 +112,25 @@ def star(buffer):
                 blend(buffer, x, y, (250, 190, 120, 255), 0.55)
 
 
+def black_hole(buffer):
+    import math
+
+    for y in range(SIZE):
+        for x in range(SIZE):
+            dx = (x + 0.5) / SIZE - 0.5
+            dy = (y + 0.5) / SIZE - 0.5
+            distance = math.hypot(dx, dy)
+            index = (y * SIZE + x) * 4
+            if distance <= 0.25:
+                buffer[index:index + 4] = [2, 1, 6, 255]
+            elif distance <= 0.48:
+                ring = max(0.0, 1.0 - abs((distance - 0.32) / 0.16))
+                brightness = 0.65 + 0.35 * math.sin(math.atan2(dy, dx) * 3.0)
+                buffer[index:index + 4] = [
+                    int(210 * brightness), int(110 * brightness), 245, int(ring * 255)
+                ]
+
+
 def chief(buffer, coat_color, accent_color):
     # Framed portrait backdrop disc
     fill_circle(buffer, SIZE * 0.5, SIZE * 0.52, SIZE * 0.44, (24, 30, 42, 255), 0)
@@ -184,6 +203,10 @@ def main():
     star_pixels = [0] * (SIZE * SIZE * 4)
     star(star_pixels)
     write_if_missing(os.path.join(root, "stars", "corona.png"), SIZE, SIZE, bytes(star_pixels), force)
+
+    hole_pixels = [0] * (SIZE * SIZE * 4)
+    black_hole(hole_pixels)
+    write_if_missing(os.path.join(root, "black-holes", "accretion.png"), SIZE, SIZE, bytes(hole_pixels), force)
 
     for name, coat, accent in [
         ("earth.png", (48, 88, 150), (210, 175, 75)),

@@ -5,6 +5,13 @@
     description: "A company mining belt at the edge of the charts. The drill crews measure wealth in ore and lifespans in shift rotations, and the union hall outranks the law.",
     position: (2800.0, -3200.0),
     links: ["tarsis", "ross-154"],
+    black_hole: Some((
+        position: (0.0, -1900.0),
+        radius: 90.0,
+        influence: 500.0,
+        pull_strength: 180.0,
+        sprite: Some("textures/black-holes/accretion.png"),
+    )),
     star: Some((
         position: (1550.0, -600.0),
         radius: 220.0,

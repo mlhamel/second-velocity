@@ -15,7 +15,7 @@ fn base_pack_loads() {
     assert_eq!(pack.systems.len(), 15);
     assert_eq!(pack.outfits.len(), 1);
     assert_eq!(pack.quests.len(), 10);
-    assert_eq!(pack.scenarios.len(), 6);
+    assert_eq!(pack.scenarios.len(), 8);
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");
@@ -39,6 +39,16 @@ fn base_pack_loads() {
     assert!(sol.links.contains(&"vega".to_owned()));
 
     let sol_star = sol.star.as_ref().expect("sol has a star");
+    assert!(
+        sol.black_hole.is_none(),
+        "old systems need no black-hole field"
+    );
+    let hole = pack
+        .system("cygnus-x1")
+        .and_then(|system| system.black_hole.as_ref())
+        .expect("Cygnus X-1 has a black hole");
+    assert_eq!(hole.radius, 90.0);
+    assert_eq!(hole.influence, 500.0);
     assert_eq!(sol_star.radius, 240.0);
     assert_eq!(
         sol_star.sprite.as_deref(),

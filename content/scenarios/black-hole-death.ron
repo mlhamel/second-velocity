@@ -1,0 +1,13 @@
+(
+    id: "black-hole-death",
+    name: "Black Hole: Claim Denied",
+    description: "Cross Cygnus X-1's event horizon with a fixed seed and verify destruction before the yard supplies a replacement.",
+    encounter_seed: Some(0),
+    max_ticks: 100,
+    steps: [
+        AssertSystem("sol"),
+        AssertAlive(true),
+        FlyToBlackHole(system: "cygnus-x1"),
+        AssertAlive(false),
+    ],
+)

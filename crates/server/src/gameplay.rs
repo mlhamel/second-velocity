@@ -7,11 +7,11 @@ use bevy_replicon::shared::backend::connected_client::NetworkId;
 use evr_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
 use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, WeaponDef};
 use evr_protocol::{
-    AccountState, ActiveQuest, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt,
-    EncounterOption, Explosion, Fuel, HailShip, Heading, Hull, LoginRequest, LoginResponse,
-    Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget,
-    RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle,
-    SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemMembership,
+    AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
+    DockedAt, EncounterOption, Explosion, Fuel, HailShip, Heading, Hull, LoginRequest,
+    LoginResponse, Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile,
+    QuestTarget, RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring,
+    SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemMembership,
 };
 
 use crate::Content;
@@ -82,6 +82,9 @@ pub struct MeteoriteMotion {
 
 #[derive(Component, Debug, Clone)]
 pub struct HeatWarningCooldown(f32);
+
+#[derive(Component)]
+struct BlackHoleGravity(f32);
 
 impl Default for HeatWarningCooldown {
     fn default() -> Self {
@@ -268,6 +271,7 @@ impl Plugin for GameplayPlugin {
                 (
                     authorize_clients,
                     apply_ship_control,
+                    black_hole_gravity,
                     meteorite_movement,
                     update_system_membership,
                     npc_ai,
@@ -477,6 +481,18 @@ fn spawn_world(mut commands: Commands, content: Res<Content>) {
                     radius: star.radius,
                 },
                 Position(sys_center + Vec2::new(star.position.0, star.position.1)),
+            ));
+        }
+        if let Some(hole) = &system.black_hole {
+            commands.spawn((
+                Replicated,
+                BlackHoleTag {
+                    system: system.id.clone(),
+                    radius: hole.radius,
+                    influence: hole.influence,
+                },
+                BlackHoleGravity(hole.pull_strength),
+                Position(sys_center + Vec2::from(hole.position)),
             ));
         }
 
@@ -1709,6 +1725,73 @@ fn meteorite_ship_collisions(
     }
 }
 
+fn black_hole_gravity(
+    mut commands: Commands,
+    time: Res<Time>,
+    content: Res<Content>,
+    mut rng: ResMut<EncounterRng>,
+    mut ships: Query<(&mut Ship, Option<&ClientRef>), Without<DockedAt>>,
+    holes: Query<(&BlackHoleTag, &BlackHoleGravity, &Position)>,
+) {
+    for (mut ship, client_ref) in &mut ships {
+        if ship.0.is_destroyed() {
+            continue;
+        }
+        // This system immediately follows apply_ship_control, which integrates
+        // position += velocity * dt. Recover its exact segment start before
+        // any gravity modifies velocity, so grazing/warp crossings cannot tunnel.
+        let flight_start = ship.0.position - ship.0.velocity * time.delta_secs();
+        for (hole, gravity, position) in &holes {
+            let delta = position.0 - ship.0.position;
+            if evr_core::black_hole_horizon_crossed(
+                flight_start - position.0,
+                ship.0.position - position.0,
+                hole.radius,
+            ) {
+                if rng.next_u32(2) == 0 {
+                    ship.0.apply_damage(f32::MAX);
+                    if let Some(client_ref) = client_ref {
+                        notice(
+                            &mut commands,
+                            ClientId::Client(client_ref.0),
+                            "Event horizon crossed. Your insurer declines to comment.",
+                        );
+                    }
+                } else {
+                    let destinations: Vec<_> = content
+                        .0
+                        .systems
+                        .iter()
+                        .filter(|system| system.id != hole.system)
+                        .collect();
+                    // Validation requires another system for the teleport branch.
+                    if let Some(destination) =
+                        destinations.get(rng.next_u32(destinations.len() as u32) as usize)
+                    {
+                        ship.0.position = Vec2::from(destination.position);
+                        ship.0.velocity = Vec2::ZERO;
+                        if let Some(client_ref) = client_ref {
+                            notice(
+                                &mut commands,
+                                ClientId::Client(client_ref.0),
+                                format!(
+                                    "The black hole spits you out in {}. Check the cargo straps.",
+                                    destination.name
+                                ),
+                            );
+                        }
+                    }
+                }
+                // One outcome per ship per tick, even if hazard discs overlap.
+                break;
+            }
+            ship.0.velocity +=
+                evr_core::black_hole_acceleration(delta, hole.radius, hole.influence, gravity.0)
+                    * time.delta_secs();
+        }
+    }
+}
+
 fn star_heat(
     mut commands: Commands,
     time: Res<Time>,
@@ -2011,13 +2094,16 @@ fn respawn_pirates(
 fn update_system_membership(
     mut commands: Commands,
     content: Res<Content>,
-    mut players: Query<(&Position, &mut SystemMembership, &ClientRef), With<PlayerShip>>,
+    mut ships: Query<(&Ship, &mut SystemMembership, Option<&ClientRef>)>,
 ) {
-    for (position, mut membership, client_ref) in &mut players {
+    for (ship, mut membership, client_ref) in &mut ships {
+        if ship.0.is_destroyed() {
+            continue;
+        }
         let mut best: Option<(f32, &str)> = None;
         for system in &content.0.systems {
             let center = Vec2::new(system.position.0, system.position.1);
-            let dist = position.0.distance(center);
+            let dist = ship.0.position.distance(center);
             if dist < SYSTEM_MEMBERSHIP_RADIUS && best.is_none_or(|(d, _)| dist < d) {
                 best = Some((dist, &system.id));
             }
@@ -2026,7 +2112,9 @@ fn update_system_membership(
             && membership.0 != id
         {
             membership.0 = id.to_owned();
-            if let Some(system) = content.0.system(id) {
+            if let Some(system) = content.0.system(id)
+                && let Some(client_ref) = client_ref
+            {
                 notice(
                     &mut commands,
                     ClientId::Client(client_ref.0),
@@ -4000,6 +4088,321 @@ mod tests {
             .map(|(star,)| star.clone());
         let sol_star = sol_star.expect("sol star must replicate");
         assert_eq!(sol_star.radius, 240.0);
+    }
+
+    fn black_hole_test_app(seed: u32) -> (App, Entity, Vec2) {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../content");
+        let pack = ContentPack::load_dir(&root).unwrap();
+        let system = pack.system("cygnus-x1").unwrap();
+        let hole = system.black_hole.as_ref().unwrap();
+        let center = Vec2::from(system.position) + Vec2::from(hole.position);
+        let mut app = App::new();
+        let mut time = Time::<()>::default();
+        time.advance_by(Duration::from_millis(100));
+        app.insert_resource(time)
+            .insert_resource(EncounterRng::with_roll(seed))
+            .add_systems(
+                Update,
+                (black_hole_gravity, update_system_membership).chain(),
+            );
+        app.world_mut().spawn((
+            BlackHoleTag {
+                system: system.id.clone(),
+                radius: hole.radius,
+                influence: hole.influence,
+            },
+            BlackHoleGravity(hole.pull_strength),
+            Position(center),
+        ));
+        let mut state = ShipState::new(40.0, 25.0, 73.0);
+        state.position = center;
+        let ship = app
+            .world_mut()
+            .spawn((
+                Ship(state),
+                SystemMembership("sol".into()),
+                // Deliberately stale replicated position: membership must use Ship.
+                Position(Vec2::ZERO),
+            ))
+            .id();
+        app.insert_resource(Content(pack));
+        (app, ship, center)
+    }
+
+    #[test]
+    fn black_hole_pulls_player_and_npc_spatially_without_consuming_rng() {
+        let (mut app, ship, center) = black_hole_test_app(1);
+        let initial_rng = app.world().resource::<EncounterRng>().0;
+        app.world_mut().get_mut::<Ship>(ship).unwrap().0.position = center + Vec2::X * 300.0;
+        let mut npc_state = ShipState::new(40.0, 25.0, 50.0);
+        npc_state.position = center + Vec2::Y * 300.0;
+        let npc = app.world_mut().spawn((Ship(npc_state), Npc)).id();
+        app.update();
+        let player_velocity = app.world().get::<Ship>(ship).unwrap().0.velocity;
+        let npc_velocity = app.world().get::<Ship>(npc).unwrap().0.velocity;
+        assert!(player_velocity.x < 0.0);
+        assert_eq!(player_velocity.y, 0.0);
+        assert!(npc_velocity.y < 0.0);
+        assert_eq!(npc_velocity.x, 0.0);
+        assert_eq!(app.world().resource::<EncounterRng>().0, initial_rng);
+    }
+
+    #[test]
+    fn black_hole_outside_influence_is_safe() {
+        let (mut app, ship, center) = black_hole_test_app(0);
+        app.world_mut().get_mut::<Ship>(ship).unwrap().0.position = center + Vec2::X * 501.0;
+        let initial_rng = app.world().resource::<EncounterRng>().0;
+        app.update();
+        let state = &app.world().get::<Ship>(ship).unwrap().0;
+        assert_eq!(state.velocity, Vec2::ZERO);
+        assert_eq!((state.shields, state.armor), (40.0, 25.0));
+        assert_eq!(app.world().resource::<EncounterRng>().0, initial_rng);
+    }
+
+    #[test]
+    fn black_hole_consumes_a_grazing_segment_with_both_endpoints_outside() {
+        let (mut app, ship, center) = black_hole_test_app(0);
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_millis(250));
+        app.add_systems(Update, apply_ship_control.before(black_hole_gravity));
+        app.world_mut().entity_mut(ship).insert((
+            Control {
+                warp: true,
+                ..default()
+            },
+            ShipSpec {
+                flight: FlightModel {
+                    turn_rate: 2.6,
+                    acceleration: 95.0,
+                    max_speed: 180.0,
+                    drag: DRAG,
+                },
+                cargo_capacity: 20,
+            },
+        ));
+        // Actual warp integration runs from (-55, 80) to (80, 80).
+        // Both endpoints are outside radius 90, but the segment crosses it.
+        {
+            let mut state = app.world_mut().get_mut::<Ship>(ship).unwrap();
+            state.0.position = center + Vec2::new(-55.0, 80.0);
+            state.0.velocity = Vec2::new(540.0, 0.0);
+        }
+        app.update();
+        let state = &app.world().get::<Ship>(ship).unwrap().0;
+        assert!((state.position - center - Vec2::new(80.0, 80.0)).length() < 0.01);
+        assert!(state.is_destroyed());
+    }
+
+    #[test]
+    fn black_hole_seeded_teleport_preserves_state_and_updates_membership() {
+        let (mut app, ship, _) = black_hole_test_app(1);
+        let mut account = Account::new(987);
+        account.add_cargo("ore", 3, 20);
+        app.world_mut().entity_mut(ship).insert((
+            Wallet(account),
+            ActiveQuests {
+                quests: vec![],
+                completed: vec!["newhaven-relief".into()],
+            },
+        ));
+        {
+            let mut state = app.world_mut().get_mut::<Ship>(ship).unwrap();
+            state.0.velocity = Vec2::new(90.0, -50.0);
+            state.0.shields = 31.0;
+            state.0.armor = 19.0;
+        }
+        let destination = app
+            .world()
+            .resource::<Content>()
+            .0
+            .system("tarsis")
+            .unwrap()
+            .position;
+        let mut expected_rng = EncounterRng::with_roll(1);
+        assert_eq!(expected_rng.next_u32(2), 1);
+        expected_rng.next_u32(14);
+        app.update();
+        let state = &app.world().get::<Ship>(ship).unwrap().0;
+        assert_eq!(state.position, Vec2::from(destination));
+        assert_eq!(state.velocity, Vec2::ZERO);
+        assert_eq!(state.fuel, 73.0);
+        assert_eq!((state.shields, state.armor), (31.0, 19.0));
+        assert_eq!(
+            app.world().get::<SystemMembership>(ship).unwrap().0,
+            "tarsis"
+        );
+        let wallet = &app.world().get::<Wallet>(ship).unwrap().0;
+        assert_eq!(wallet.credits, 987);
+        assert_eq!(wallet.cargo_qty("ore"), 3);
+        assert_eq!(
+            app.world().get::<ActiveQuests>(ship).unwrap().completed,
+            ["newhaven-relief"]
+        );
+        assert_eq!(app.world().resource::<EncounterRng>().0, expected_rng.0);
+        app.update();
+        assert_eq!(app.world().resource::<EncounterRng>().0, expected_rng.0);
+    }
+
+    #[test]
+    fn black_hole_lethal_branch_does_not_reroll_for_dead_ships() {
+        let (mut app, ship, _) = black_hole_test_app(0);
+        app.world_mut().entity_mut(ship).insert(Npc);
+        let mut expected_rng = EncounterRng::with_roll(0);
+        assert_eq!(expected_rng.next_u32(2), 0);
+        app.update();
+        assert!(app.world().get::<Ship>(ship).unwrap().0.is_destroyed());
+        assert_eq!(app.world().resource::<EncounterRng>().0, expected_rng.0);
+        app.update();
+        assert_eq!(app.world().resource::<EncounterRng>().0, expected_rng.0);
+    }
+
+    #[test]
+    fn black_hole_docked_ships_ignore_pull_and_horizon_for_both_seeds() {
+        for seed in [0, 1] {
+            let (mut app, ship, center) = black_hole_test_app(seed);
+            app.world_mut().entity_mut(ship).insert(DockedAt {
+                system: "sol".into(),
+                planet: "earth".into(),
+            });
+            let initial_rng = app.world().resource::<EncounterRng>().0;
+            for position in [center + Vec2::X * 300.0, center] {
+                app.world_mut().get_mut::<Ship>(ship).unwrap().0.position = position;
+                app.update();
+                let state = &app.world().get::<Ship>(ship).unwrap().0;
+                assert_eq!(state.position, position);
+                assert_eq!(state.velocity, Vec2::ZERO);
+                assert_eq!((state.shields, state.armor, state.fuel), (40.0, 25.0, 73.0));
+                assert_eq!(app.world().resource::<EncounterRng>().0, initial_rng);
+            }
+        }
+    }
+
+    #[test]
+    fn black_hole_replicates_and_teleport_notifies_client() {
+        let mut h = Harness::new();
+        h.step_until(300, |h| {
+            h.my_ship().is_some()
+                && h.client
+                    .world_mut()
+                    .query_filtered::<&BlackHoleTag, With<Remote>>()
+                    .iter(h.client.world())
+                    .count()
+                    == 1
+        });
+        let hole = h
+            .client
+            .world_mut()
+            .query::<&BlackHoleTag>()
+            .iter(h.client.world())
+            .next()
+            .unwrap()
+            .clone();
+        assert_eq!((hole.radius, hole.influence), (90.0, 500.0));
+        let center = h
+            .server
+            .world_mut()
+            .query::<(&BlackHoleTag, &Position)>()
+            .iter(h.server.world())
+            .next()
+            .unwrap()
+            .1
+            .0;
+        h.server.insert_resource(EncounterRng::with_roll(1));
+        h.set_server_ship(1, |ship| {
+            ship.position = center;
+            ship.velocity = Vec2::ZERO;
+        });
+        let client_ship = h.my_ship().unwrap();
+        h.step_until(100, |h| {
+            h.client_component::<SystemMembership>(client_ship)
+                .is_some_and(|m| m.0 == "tarsis")
+        });
+        assert!(
+            h.drain_notices()
+                .iter()
+                .any(|notice| notice.contains("black hole") && notice.contains("Tarsis"))
+        );
+    }
+
+    #[test]
+    fn black_hole_death_uses_existing_player_respawn_pipeline() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let center = h
+            .server
+            .world_mut()
+            .query::<(&BlackHoleTag, &Position)>()
+            .iter(h.server.world())
+            .next()
+            .unwrap()
+            .1
+            .0;
+        h.server.insert_resource(EncounterRng::with_roll(0));
+        h.set_server_ship(1, |ship| {
+            ship.position = center;
+            ship.velocity = Vec2::ZERO;
+        });
+        h.step_until(100, |h| h.my_ship().is_none());
+        h.step_until(300, |h| h.my_ship().is_some());
+        assert!(h.server_ship_position(1).unwrap().length() < 1.0);
+    }
+
+    #[test]
+    fn black_hole_teleports_an_npc_with_a_brain_and_updates_membership() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let center = h
+            .server
+            .world_mut()
+            .query::<(&BlackHoleTag, &Position)>()
+            .iter(h.server.world())
+            .next()
+            .unwrap()
+            .1
+            .0;
+        let npc = h
+            .server
+            .world_mut()
+            .resource_scope(|world, content: Mut<Content>| {
+                spawn_npc_role(
+                    &mut world.commands(),
+                    &content.0,
+                    "terran-courier",
+                    ShipKind::Merchant,
+                    99_002,
+                    "cygnus-x1",
+                    Vec2::new(0.0, -1900.0),
+                    NpcBrain::Merchant {
+                        commodity: "ore".into(),
+                        qty: 3,
+                        target_system: "cygnus-x1".into(),
+                        target_planet: "kestrel-drift".into(),
+                        target_pos: center + Vec2::new(500.0, 1900.0),
+                        dwell_timer: 1.5,
+                        route_step: 0,
+                    },
+                )
+            });
+        h.server.world_mut().flush();
+        h.server.insert_resource(EncounterRng::with_roll(1));
+        h.step();
+        assert_eq!(
+            h.server.world().get::<SystemMembership>(npc).unwrap().0,
+            "tarsis"
+        );
+        let destination = h
+            .server
+            .world()
+            .resource::<Content>()
+            .0
+            .system("tarsis")
+            .unwrap()
+            .position;
+        let state = &h.server.world().get::<Ship>(npc).unwrap().0;
+        assert_eq!(state.position, Vec2::from(destination));
+        assert_eq!(state.velocity, Vec2::ZERO);
+        assert!(h.server.world().get::<NpcBrain>(npc).is_some());
     }
 
     #[test]

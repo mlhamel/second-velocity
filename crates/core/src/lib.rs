@@ -203,6 +203,43 @@ pub const STAR_SURFACE_DPS: f32 = 25.0;
 pub const STAR_CORE_FRACTION: f32 = 0.5;
 pub const STAR_CORE_DPS: f32 = 500.0;
 
+/// Whether the segment between two positions relative to a hole touches its horizon.
+pub fn black_hole_horizon_crossed(start: Vec2, end: Vec2, radius: f32) -> bool {
+    if !start.is_finite() || !end.is_finite() || !radius.is_finite() || radius <= 0.0 {
+        return false;
+    }
+    let segment = end - start;
+    let length_squared = segment.length_squared();
+    let t = if length_squared > 0.0 {
+        (-start.dot(segment) / length_squared).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (start + segment * t).length() <= radius
+}
+/// Bounded inward acceleration, increasing linearly from zero at the influence
+/// boundary to `pull_strength` at the event horizon.
+pub fn black_hole_acceleration(
+    toward_hole: Vec2,
+    radius: f32,
+    influence: f32,
+    pull_strength: f32,
+) -> Vec2 {
+    if !toward_hole.is_finite()
+        || !radius.is_finite()
+        || radius <= 0.0
+        || !influence.is_finite()
+        || influence <= radius
+        || !pull_strength.is_finite()
+        || pull_strength <= 0.0
+    {
+        return Vec2::ZERO;
+    }
+    let distance = toward_hole.length();
+    let proximity = ((influence - distance) / (influence - radius)).clamp(0.0, 1.0);
+    toward_hole.normalize_or_zero() * (pull_strength * proximity)
+}
+
 pub fn star_heat_dps(distance: f32, radius: f32) -> f32 {
     if radius <= 0.0 {
         return 0.0;
@@ -243,6 +280,67 @@ pub fn split_meteorite_velocities(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn black_hole_horizon_detects_swept_and_grazing_crossings() {
+        assert!(black_hole_horizon_crossed(
+            Vec2::new(-150.0, 0.0),
+            Vec2::new(150.0, 0.0),
+            90.0
+        ));
+        assert!(black_hole_horizon_crossed(
+            Vec2::new(-10.0, 89.9),
+            Vec2::new(10.0, 89.9),
+            90.0
+        ));
+        assert!(!black_hole_horizon_crossed(
+            Vec2::new(-10.0, 90.1),
+            Vec2::new(10.0, 90.1),
+            90.0
+        ));
+        assert!(black_hole_horizon_crossed(Vec2::ZERO, Vec2::ZERO, 90.0));
+        assert!(!black_hole_horizon_crossed(
+            Vec2::X * 100.0,
+            Vec2::X * 100.0,
+            90.0
+        ));
+        assert!(!black_hole_horizon_crossed(
+            Vec2::ZERO,
+            Vec2::ZERO,
+            f32::NAN
+        ));
+    }
+    #[test]
+    fn black_hole_gravity_points_inward_and_ramps_to_horizon() {
+        let far = black_hole_acceleration(Vec2::new(0.0, -300.0), 100.0, 500.0, 200.0);
+        assert_eq!(far, Vec2::new(0.0, -100.0));
+        let near = black_hole_acceleration(Vec2::new(0.0, -100.0), 100.0, 500.0, 200.0);
+        assert_eq!(near, Vec2::new(0.0, -200.0));
+        for distance in [500.0, 600.0] {
+            assert_eq!(
+                black_hole_acceleration(Vec2::X * distance, 100.0, 500.0, 200.0),
+                Vec2::ZERO
+            );
+        }
+    }
+
+    #[test]
+    fn black_hole_gravity_handles_center_and_invalid_parameters() {
+        for (delta, radius, influence, strength) in [
+            (Vec2::ZERO, 100.0, 500.0, 200.0),
+            (Vec2::X, 0.0, 500.0, 200.0),
+            (Vec2::X, 100.0, 100.0, 200.0),
+            (Vec2::X, 100.0, 500.0, -1.0),
+            (Vec2::X, f32::NAN, 500.0, 200.0),
+            (Vec2::X, 100.0, f32::INFINITY, 200.0),
+            (Vec2::splat(f32::NAN), 100.0, 500.0, 200.0),
+        ] {
+            assert_eq!(
+                black_hole_acceleration(delta, radius, influence, strength),
+                Vec2::ZERO
+            );
+        }
+    }
 
     fn flight(turn_rate: f32, acceleration: f32, max_speed: f32, drag: f32) -> FlightModel {
         FlightModel {

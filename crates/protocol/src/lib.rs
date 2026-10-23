@@ -76,6 +76,13 @@ pub struct StarTag {
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BlackHoleTag {
+    pub system: String,
+    pub radius: f32,
+    pub influence: f32,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SystemMembership(pub String);
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -284,6 +291,7 @@ pub fn register(app: &mut App) {
         .replicate::<Projectile>()
         .replicate::<PlanetTag>()
         .replicate::<StarTag>()
+        .replicate::<BlackHoleTag>()
         .replicate::<SystemMembership>()
         .replicate::<DockedAt>()
         .replicate::<AccountState>()
@@ -354,6 +362,11 @@ mod tests {
         roundtrip(StarTag {
             system: "sol".into(),
             radius: 240.0,
+        });
+        roundtrip(BlackHoleTag {
+            system: "cygnus-x1".into(),
+            radius: 90.0,
+            influence: 500.0,
         });
         roundtrip(ChiefEncounter {
             chief_name: "Port Director Lin".into(),

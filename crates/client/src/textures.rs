@@ -8,6 +8,7 @@ pub struct Textures {
     pub ship: Handle<Image>,
     pub planet: Handle<Image>,
     pub star: Handle<Image>,
+    pub black_hole: Handle<Image>,
     pub glow: Handle<Image>,
     pub chief: Handle<Image>,
     pub meteorites: [Handle<Image>; 3],
@@ -21,6 +22,7 @@ pub(crate) fn create_textures(
     let ship = images.add(ship_image(96));
     let planet = images.add(planet_image(128));
     let star = images.add(star_image(128));
+    let black_hole = images.add(black_hole_image(128));
     let glow = images.add(glow_image(64));
     let chief = images.add(chief_image(128));
     let meteorites = [
@@ -44,6 +46,7 @@ pub(crate) fn create_textures(
         ship,
         planet,
         star,
+        black_hole,
         glow,
         chief,
         meteorites,
@@ -229,6 +232,32 @@ fn star_image(size: u32) -> Image {
                 data[index + 1] = (110.0 + 90.0 * falloff) as u8;
                 data[index + 2] = (40.0 + 60.0 * falloff) as u8;
                 data[index + 3] = (falloff * 0.85 * 255.0) as u8;
+            }
+        }
+    }
+    image_from_rgba(size, data)
+}
+
+fn black_hole_image(size: u32) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = (x as f32 + 0.5) / s - 0.5;
+            let dy = (y as f32 + 0.5) / s - 0.5;
+            let distance = dx.hypot(dy);
+            let index = ((y * size + x) * 4) as usize;
+            if distance <= 0.25 {
+                data[index..index + 4].copy_from_slice(&[2, 1, 6, 255]);
+            } else if distance <= 0.48 {
+                let ring = (1.0 - ((distance - 0.32) / 0.16).abs()).max(0.0);
+                let brightness = 0.65 + 0.35 * (dy.atan2(dx) * 3.0).sin();
+                data[index..index + 4].copy_from_slice(&[
+                    (210.0 * brightness) as u8,
+                    (110.0 * brightness) as u8,
+                    245,
+                    (ring * 255.0) as u8,
+                ]);
             }
         }
     }

@@ -12,7 +12,19 @@ pub struct SystemDef {
     #[serde(default)]
     pub star: Option<StarDef>,
     #[serde(default)]
+    pub black_hole: Option<BlackHoleDef>,
+    #[serde(default)]
     pub meteorites: Option<MeteoriteFieldDef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlackHoleDef {
+    pub position: (f32, f32),
+    pub radius: f32,
+    pub influence: f32,
+    pub pull_strength: f32,
+    #[serde(default)]
+    pub sprite: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

@@ -460,6 +460,24 @@ impl Harness {
                 .collect::<Vec<_>>()
         };
 
+        let black_holes = {
+            let mut query = self
+                .server
+                .world_mut()
+                .query::<(&evr_protocol::BlackHoleTag, &Position)>();
+            query
+                .iter(self.server.world())
+                .map(|(hole, position)| {
+                    serde_json::json!({
+                        "system": hole.system,
+                        "position": [position.0.x, position.0.y],
+                        "radius": hole.radius,
+                        "influence": hole.influence,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
         let projectile_count = {
             let mut state = self.server.world_mut().query::<&Projectile>();
             let world = self.server.world();
@@ -492,6 +510,7 @@ impl Harness {
             "planets": planets,
             "ships": ships,
             "meteorites": meteorites,
+            "black_holes": black_holes,
             "market": market,
             "encounter": encounter_json,
             "quests": quests_json,

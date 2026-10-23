@@ -68,5 +68,7 @@
         "scenarios/meteorite-fragmentation.ron",
         "scenarios/living-galaxy-npcs.ron",
         "scenarios/sun-heat-damage.ron",
+        "scenarios/black-hole-teleport.ron",
+        "scenarios/black-hole-death.ron",
     ],
 )

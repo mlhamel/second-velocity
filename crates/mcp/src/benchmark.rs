@@ -298,6 +298,65 @@ fn execute_step(
             );
             Ok(())
         }
+        ScenarioStep::FlyToBlackHole { system } => {
+            let target = {
+                let mut query = harness
+                    .server
+                    .world_mut()
+                    .query::<(&evr_protocol::BlackHoleTag, &Position)>();
+                query
+                    .iter(harness.server.world())
+                    .find(|(hole, _)| hole.system == *system)
+                    .map(|(_, pos)| pos.0)
+                    .ok_or_else(|| format!("black hole for system {system} not found"))?
+            };
+            if harness.observe()["alive"].as_bool() != Some(true) {
+                return Err("cannot approach a black hole without a living ship".to_owned());
+            }
+            harness.set_flight(0.0, 0.0, false);
+            harness.set_warp(false);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            // Horizon entry is a fixture like SpawnMeteorite: pin the ship
+            // rather than let dt jitter or route hazards choose when RNG is drawn.
+            // The server still resolves gravity, consumption, death and replication.
+            let mut entered = false;
+            {
+                let mut query = harness.server.world_mut().query::<(
+                    &evr_protocol::ShipInfo,
+                    &mut evr_server::gameplay::Ship,
+                    Option<&evr_protocol::DockedAt>,
+                )>();
+                for (info, mut ship, docked) in query.iter_mut(harness.server.world_mut()) {
+                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                        if docked.is_some() {
+                            return Err("lift off before approaching a black hole".to_owned());
+                        }
+                        ship.0.position = target;
+                        ship.0.velocity = bevy::math::Vec2::ZERO;
+                        entered = true;
+                    }
+                }
+            }
+            if !entered {
+                return Err("player ship disappeared before horizon entry".to_owned());
+            }
+            advance_tracking(
+                harness,
+                2,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
         ScenarioStep::Land { planet } => {
             harness.land(planet);
             advance_tracking(

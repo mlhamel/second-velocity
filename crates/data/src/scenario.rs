@@ -45,6 +45,9 @@ pub enum ScenarioStep {
         #[serde(default = "default_star_approach")]
         approach: f32,
     },
+    FlyToBlackHole {
+        system: String,
+    },
     Land {
         planet: String,
     },

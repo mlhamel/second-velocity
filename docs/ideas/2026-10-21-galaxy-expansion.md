@@ -141,18 +141,40 @@ offers no chief encounter today.
 
 ## Phase 3 — Black holes (1-2)
 
-- [ ] Schema: `SystemDef.black_hole: Option<BlackHoleDef>` (position, event
-      horizon radius, influence radius, pull strength; serde-defaulted)
-- [ ] Protocol: replicated `BlackHoleTag { system, radius, influence }`
-- [ ] Server: gravity pull inside influence (accel toward hole scaled by
+- [x] Schema: `SystemDef.black_hole: Option<BlackHoleDef>` (position, event
+      horizon radius, influence radius, pull strength, optional sprite;
+      serde-defaulted; finite/positive values and assets validated)
+- [x] Protocol: replicated `BlackHoleTag { system, radius, influence }`
+- [x] Server: gravity pull inside influence (accel toward hole scaled by
       proximity); crossing horizon draws `EncounterRng`: 50% lethal damage /
       50% teleport to seeded-random other system center + notice;
       `update_system_membership` picks up new location; docked ships immune
-- [ ] Client: dark disc + accretion ring placeholder texture; minimap violet dot
-- [ ] Scenarios: `black-hole-teleport.ron` (seeded -> `AssertSystem`),
+- [x] Content: one hole in Cygnus X-1, offset `(0, -1900)`, horizon 90,
+      influence 500, pull strength 180; geometry tests protect all systems'
+      spawn/membership discs, fields, planet lanes, stars, and linked routes
+- [x] Client: dark disc + accretion ring placeholder texture; minimap violet dot
+- [x] Scenarios: `black-hole-teleport.ron` (seeded -> `AssertSystem`),
       `black-hole-death.ron` (seeded -> `AssertAlive(false)`)
-- [ ] Server unit tests: pull vector, both outcomes, docked immunity
-- [ ] Full validation battery + @review
+- [x] Server unit tests: pull vector, both outcomes, docked immunity,
+      preserved teleport state, replication/notices, and existing respawn flow
+- [x] Full validation battery + independent review: `cargo test --workspace`
+      (74 tests), `cargo build --workspace`,
+      `cargo clippy --workspace --all-targets -- -D warnings`,
+      `cargo fmt --all --check`, and `make bench` (all 8 scenarios PASS).
+      Review found endpoint-only horizon tunneling; fixed with swept
+      segment/horizon intersection and a scheduled warp-movement regression.
+      Added full-server NPC merchant-brain teleport coverage. Re-review: APPROVE.
+
+Implementation notes:
+- Gravity uses world-space distance, including ships with stale system tags.
+- Membership reads authoritative `ShipState.position` for players and NPCs,
+  so a teleport is recognized without waiting for replicated position sync.
+- Horizon detection sweeps the actual integrated flight segment before any
+  gravity changes velocity, so fast and grazing crossings cannot skip it.
+- `FlyToBlackHole { system }` pins horizon entry as a deterministic scenario
+  fixture; the server resolves the outcome. Seeds 0/1 select death/teleport;
+  seed 1 currently lands in Tarsis. `observe()` exposes black-hole positions,
+  horizon radii, and influence radii.
 
 ## Follow-up rules
 

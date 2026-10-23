@@ -5,8 +5,8 @@ use bevy::color::Mix;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_protocol::{
-    Explosion, Heading, Hull, Meteorite, PlanetTag, Position, Projectile, ShipInfo, ShipKind,
-    StarTag,
+    BlackHoleTag, Explosion, Heading, Hull, Meteorite, PlanetTag, Position, Projectile, ShipInfo,
+    ShipKind, StarTag,
 };
 
 const FLASH_SECS: f32 = 0.18;
@@ -21,6 +21,7 @@ impl Plugin for VisualsPlugin {
                 attach_ship_visuals,
                 attach_planet_visuals,
                 attach_star_visuals,
+                attach_black_hole_visuals,
                 attach_projectile_visuals,
                 attach_meteorite_visuals,
                 detect_hits,
@@ -30,6 +31,7 @@ impl Plugin for VisualsPlugin {
                 sync_ship_transforms,
                 sync_planet_transforms,
                 sync_star_transforms,
+                sync_black_hole_transforms,
                 sync_projectile_transforms,
                 sync_meteorite_transforms,
                 parallax,
@@ -48,6 +50,9 @@ struct PlanetVisual;
 
 #[derive(Component)]
 struct StarVisual;
+
+#[derive(Component)]
+struct BlackHoleVisual;
 
 #[derive(Component)]
 struct ProjectileVisual;
@@ -180,6 +185,34 @@ fn attach_star_visuals(
     }
 }
 
+type AddedBlackHoles<'w, 's> =
+    Query<'w, 's, (Entity, &'static BlackHoleTag), (Added<BlackHoleTag>, With<Remote>)>;
+
+fn attach_black_hole_visuals(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    asset_server: Res<AssetServer>,
+    content: Res<ClientContent>,
+    added: AddedBlackHoles,
+) {
+    for (entity, hole) in &added {
+        let sprite_path = content
+            .0
+            .system(&hole.system)
+            .and_then(|system| system.black_hole.as_ref())
+            .and_then(|hole| hole.sprite.clone());
+        let image = match sprite_path {
+            Some(path) => asset_server.load(path),
+            None => textures.black_hole.clone(),
+        };
+        let mut sprite = Sprite::from_image(image);
+        // The opaque dark disc occupies 25% of the texture width in radius;
+        // its visible edge is the authoritative event horizon.
+        sprite.custom_size = Some(Vec2::splat(hole.radius * 4.0));
+        commands.entity(entity).insert((BlackHoleVisual, sprite));
+    }
+}
+
 fn attach_projectile_visuals(
     mut commands: Commands,
     textures: Res<Textures>,
@@ -305,6 +338,14 @@ fn sync_planet_transforms(mut planets: Query<(&Position, &mut Transform), With<P
 fn sync_star_transforms(mut stars: Query<(&Position, &mut Transform), With<StarVisual>>) {
     for (position, mut transform) in &mut stars {
         transform.translation = position.0.extend(-2.0);
+    }
+}
+
+fn sync_black_hole_transforms(
+    mut holes: Query<(&Position, &mut Transform), With<BlackHoleVisual>>,
+) {
+    for (position, mut transform) in &mut holes {
+        transform.translation = position.0.extend(-1.5);
     }
 }
 

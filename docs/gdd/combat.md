@@ -29,8 +29,31 @@ spawn points and planet lanes.
 - Undocked ships only: docking at a planet ends the threat. NPCs burn too —
   the universe is consistent, so a fleeing pirate can die in a corona
 - A cooldown-gated notice warns on heat-zone entry
-- Black holes (gravity pull + seeded 50/50 destroy/teleport) are the next
-  hazard type, on the galaxy-expansion roadmap (Phase 3)
+
+Black holes are live in Cygnus X-1, south of the mining belt (ADR-0012).
+
+- Content defines the position offset, event horizon radius, influence radius,
+  pull strength, and optional sprite. The full influence disc stays clear of
+  spawn zones, planet approaches, meteorite fields, stellar heat, and travel
+  corridors; pack tests enforce the placement.
+- Gravity is spatial, not membership-gated: undocked players and NPCs
+  accelerate toward the hole. Pull ramps linearly from zero at the influence
+  boundary to the configured strength at the horizon; no inverse-square
+  singularity.
+- Reaching the event horizon resolves one seeded 50/50 draw: destruction via
+  the normal damage/death/respawn pipeline, or teleportation to a seeded-random
+  other system's center with velocity zeroed. The server checks the full
+  flight segment, so warp-speed and grazing crossings cannot skip the horizon.
+- Teleportation preserves fuel, hull, credits, cargo, and quests. The server
+  updates system membership from the authoritative position and notifies the
+  player of the destination.
+- Docked ships are immune to both pull and consumption. Dead ships do not
+  consume more random outcomes.
+- The dark disc marks the event horizon; a violet accretion ring and minimap
+  dot distinguish it from a star. Clients present replicated state only.
+- `black-hole-teleport` and `black-hole-death` benchmark scenarios pin horizon
+  entry with `FlyToBlackHole { system }` so navigation timing cannot change the
+  seeded outcome. Gravity is covered separately by core and server tests.
 
 Open questions:
 

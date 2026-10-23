@@ -1,0 +1,16 @@
+(
+    id: "black-hole-teleport",
+    name: "Black Hole: Unscheduled Arrival",
+    description: "Cross Cygnus X-1's event horizon with a fixed seed and verify a living arrival in Tarsis.",
+    encounter_seed: Some(1),
+    max_ticks: 100,
+    steps: [
+        AssertSystem("sol"),
+        AssertAlive(true),
+        FlyToBlackHole(system: "cygnus-x1"),
+        AssertAlive(true),
+        AssertSystem("tarsis"),
+        AssertHull(min: Some(65.0), max: Some(65.0)),
+        AssertCredits(min: Some(500), max: Some(500)),
+    ],
+)

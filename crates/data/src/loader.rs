@@ -90,6 +90,11 @@ impl ContentPack {
             {
                 validate_asset(&assets_root, sprite)?;
             }
+            if let Some(hole) = &system.black_hole
+                && let Some(sprite) = &hole.sprite
+            {
+                validate_asset(&assets_root, sprite)?;
+            }
         }
         Ok(())
     }
@@ -161,6 +166,22 @@ impl ContentPack {
                     id: system.id.clone(),
                 });
             }
+            if let Some(hole) = &system.black_hole
+                && (!hole.position.0.is_finite()
+                    || !hole.position.1.is_finite()
+                    || !hole.radius.is_finite()
+                    || hole.radius <= 0.0
+                    || !hole.influence.is_finite()
+                    || hole.influence <= hole.radius
+                    || !hole.pull_strength.is_finite()
+                    || hole.pull_strength <= 0.0
+                    || systems.len() < 2)
+            {
+                return Err(ContentError::UnknownReference {
+                    kind: "black hole config",
+                    id: system.id.clone(),
+                });
+            }
             for link in &system.links {
                 validate_reference("system link", link, &system_ids)?;
                 let target_has_back_link = systems
@@ -226,6 +247,19 @@ impl ContentPack {
                     }
                     ScenarioStep::Land { planet } => {
                         validate_reference("scenario planet", planet, &planet_ids)?;
+                    }
+                    ScenarioStep::FlyToBlackHole { system } => {
+                        validate_reference("scenario system", system, &system_ids)?;
+                        if !systems
+                            .iter()
+                            .find(|target| &target.id == system)
+                            .is_some_and(|target| target.black_hole.is_some())
+                        {
+                            return Err(ContentError::UnknownReference {
+                                kind: "scenario black hole target",
+                                id: system.clone(),
+                            });
+                        }
                     }
                     ScenarioStep::AssertDocked(Some(planet)) => {
                         validate_reference("scenario docked planet", planet, &planet_ids)?;
