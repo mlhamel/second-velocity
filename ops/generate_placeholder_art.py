@@ -97,6 +97,24 @@ def planet(buffer, base):
                 blend(buffer, x, y, color, alpha * 0.35)
 
 
+def station(buffer):
+    for y in range(SIZE):
+        for x in range(SIZE):
+            dx = (x + 0.5) / SIZE - 0.5
+            dy = (y + 0.5) / SIZE - 0.5
+            radius = (dx * dx + dy * dy) ** 0.5
+            if radius < 0.09:
+                color = [95, 230, 220, 255]
+            elif 0.25 <= radius < 0.35 or (abs(dx) < 0.035 or abs(dy) < 0.035) and radius < 0.40:
+                color = [185, 200, 215, 255]
+            elif 0.12 <= abs(dx) < 0.45 and 0.06 <= abs(dy) < 0.16:
+                color = [50, 110, 185, 255]
+            else:
+                continue
+            index = (y * SIZE + x) * 4
+            buffer[index:index + 4] = color
+
+
 def star(buffer):
     cx = cy = SIZE / 2
     disc = SIZE * 0.30
@@ -200,6 +218,10 @@ def main():
         planet(planet_pixels, base)
         write_if_missing(os.path.join(root, "planets", name), SIZE, SIZE, bytes(planet_pixels), force)
 
+    station_pixels = [0] * (SIZE * SIZE * 4)
+    station(station_pixels)
+    write_if_missing(os.path.join(root, "stations", "docking-ring.png"), SIZE, SIZE, bytes(station_pixels), force)
+
     star_pixels = [0] * (SIZE * SIZE * 4)
     star(star_pixels)
     write_if_missing(os.path.join(root, "stars", "corona.png"), SIZE, SIZE, bytes(star_pixels), force)
@@ -209,6 +231,8 @@ def main():
     write_if_missing(os.path.join(root, "black-holes", "accretion.png"), SIZE, SIZE, bytes(hole_pixels), force)
 
     for name, coat, accent in [
+        ("lin-relay.png", (50, 75, 120), (95, 230, 220)),
+        ("wayfarer-exchange.png", (100, 75, 65), (230, 180, 80)),
         ("earth.png", (48, 88, 150), (210, 175, 75)),
         ("newhaven.png", (128, 92, 62), (90, 190, 175)),
         ("kestrel-drift.png", (110, 78, 52), (230, 150, 60)),

@@ -5,13 +5,14 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon::shared::backend::connected_client::NetworkId;
 use evr_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
-use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, WeaponDef};
+use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef};
 use evr_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
-    DockedAt, EncounterOption, Explosion, Fuel, HailShip, Heading, Hull, LoginRequest,
-    LoginResponse, Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile,
-    QuestTarget, RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring,
-    SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemMembership,
+    DockableKind, DockableTag, DockedAt, EncounterOption, Explosion, Fuel, HailShip, Heading, Hull,
+    LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position,
+    Projectile, QuestTarget, RequestDock, RequestLand, RequestLiftOff, RespondToEncounter,
+    SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag,
+    SystemMembership,
 };
 
 use crate::Content;
@@ -28,8 +29,8 @@ pub const JUMP_FUEL_COST: f32 = 25.0;
 pub const DRAG: f32 = 0.4;
 pub const SHIELD_REGEN: f32 = 4.0;
 pub const SHIP_RADIUS: f32 = 14.0;
-pub const PLANET_RADIUS: f32 = 90.0;
-pub const PLANET_OFFSET_X: f32 = 500.0;
+pub const PLANET_RADIUS: f32 = evr_data::PLANET_RADIUS;
+pub const PLANET_OFFSET_X: f32 = evr_data::PLANET_OFFSET_X;
 pub const LAND_RANGE: f32 = 220.0;
 pub const HAIL_RANGE: f32 = 240.0;
 pub const PIRATE_SIGHT_RANGE: f32 = 900.0;
@@ -85,6 +86,18 @@ pub struct HeatWarningCooldown(f32);
 
 #[derive(Component)]
 struct BlackHoleGravity(f32);
+
+#[derive(Component)]
+struct StationOrbit {
+    center: Vec2,
+    radius: f32,
+    period_secs: f32,
+    phase: f32,
+    started_at: f64,
+}
+
+#[derive(Component)]
+struct DockingOffset(Vec2);
 
 impl Default for HeatWarningCooldown {
     fn default() -> Self {
@@ -258,6 +271,7 @@ impl Plugin for GameplayPlugin {
             .add_observer(on_set_turn)
             .add_observer(on_set_firing)
             .add_observer(on_request_land)
+            .add_observer(on_request_dock)
             .add_observer(on_request_lift_off)
             .add_observer(on_buy_commodity)
             .add_observer(on_sell_commodity)
@@ -270,6 +284,7 @@ impl Plugin for GameplayPlugin {
                 Update,
                 (
                     authorize_clients,
+                    (station_motion, sync_docked_ships).chain(),
                     apply_ship_control,
                     black_hole_gravity,
                     meteorite_movement,
@@ -453,7 +468,7 @@ pub fn spawn_meteorite(
         .id()
 }
 
-fn spawn_world(mut commands: Commands, content: Res<Content>) {
+fn spawn_world(mut commands: Commands, content: Res<Content>, time: Res<Time>) {
     let pack = &content.0;
     for system in &pack.systems {
         let sys_center = Vec2::new(system.position.0, system.position.1);
@@ -466,11 +481,60 @@ fn spawn_world(mut commands: Commands, content: Res<Content>) {
                     name: planet.name.clone(),
                     radius: PLANET_RADIUS,
                 },
+                DockableTag {
+                    system: system.id.clone(),
+                    id: planet.id.clone(),
+                    name: planet.name.clone(),
+                    radius: PLANET_RADIUS,
+                    kind: DockableKind::Planet,
+                },
                 Position(Vec2::new(
-                    system.position.0 + PLANET_OFFSET_X + index as f32 * 600.0,
+                    system.position.0 + PLANET_OFFSET_X + index as f32 * evr_data::PLANET_SPACING,
                     system.position.1,
                 )),
             ));
+        }
+
+        for station in &system.stations {
+            let (position, orbit) = match &station.placement {
+                StationPlacement::Fixed { position } => (sys_center + Vec2::from(*position), None),
+                StationPlacement::Orbit {
+                    planet,
+                    radius,
+                    period_secs,
+                    phase,
+                } => {
+                    let center = Vec2::from(
+                        system
+                            .planet_position(planet)
+                            .expect("validated orbital parent"),
+                    );
+                    (
+                        evr_core::orbit_position(center, *radius, *period_secs, *phase, 0.0),
+                        Some(StationOrbit {
+                            center,
+                            radius: *radius,
+                            period_secs: *period_secs,
+                            phase: *phase,
+                            started_at: time.elapsed_secs_f64(),
+                        }),
+                    )
+                }
+            };
+            let mut entity = commands.spawn((
+                Replicated,
+                DockableTag {
+                    system: system.id.clone(),
+                    id: station.id.clone(),
+                    name: station.name.clone(),
+                    radius: station.radius,
+                    kind: DockableKind::Station,
+                },
+                Position(position),
+            ));
+            if let Some(orbit) = orbit {
+                entity.insert(orbit);
+            }
         }
 
         if let Some(star) = &system.star {
@@ -552,6 +616,40 @@ fn spawn_world(mut commands: Commands, content: Res<Content>) {
         Vec2::new(0.0, -400.0),
     );
     spawn_living_galaxy_npcs(&mut commands, pack);
+}
+
+fn station_motion(time: Res<Time>, mut stations: Query<(&StationOrbit, &mut Position)>) {
+    for (orbit, mut position) in &mut stations {
+        position.0 = evr_core::orbit_position(
+            orbit.center,
+            orbit.radius,
+            orbit.period_secs,
+            orbit.phase,
+            time.elapsed_secs_f64() - orbit.started_at,
+        );
+    }
+}
+
+fn sync_docked_ships(
+    mut ships: Query<(
+        &mut Ship,
+        &DockedAt,
+        Option<&DockingOffset>,
+        &mut SystemMembership,
+    )>,
+    ports: Query<(&DockableTag, &Position)>,
+) {
+    for (mut ship, docked, offset, mut membership) in &mut ships {
+        membership.0.clone_from(&docked.system);
+        ship.0.velocity = Vec2::ZERO;
+        if let Some(offset) = offset
+            && let Some((_, position)) = ports
+                .iter()
+                .find(|(port, _)| port.system == docked.system && port.id == docked.location)
+        {
+            ship.0.position = position.0 + offset.0;
+        }
+    }
 }
 
 fn spawn_living_galaxy_npcs(commands: &mut Commands, pack: &ContentPack) {
@@ -2094,7 +2192,7 @@ fn respawn_pirates(
 fn update_system_membership(
     mut commands: Commands,
     content: Res<Content>,
-    mut ships: Query<(&Ship, &mut SystemMembership, Option<&ClientRef>)>,
+    mut ships: Query<(&Ship, &mut SystemMembership, Option<&ClientRef>), Without<DockedAt>>,
 ) {
     for (ship, mut membership, client_ref) in &mut ships {
         if ship.0.is_destroyed() {
@@ -2193,18 +2291,18 @@ fn auto_save(
     let _ = &content;
 }
 
-type LandingShips<'w, 's> = Query<
+type DockingShips<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
         &'static Owner,
-        &'static Position,
-        &'static SystemMembership,
+        &'static mut SystemMembership,
         Option<&'static DockedAt>,
         Option<&'static ActiveQuests>,
         &'static mut Ship,
         &'static mut Wallet,
+        &'static mut Control,
     ),
 >;
 
@@ -2215,94 +2313,161 @@ fn on_request_land(
     clients: Query<&NetworkId>,
     content: Res<Content>,
     mut rng: ResMut<EncounterRng>,
-    mut ships: LandingShips,
-    planets: Query<(&PlanetTag, &Position)>,
+    mut ships: DockingShips,
+    ports: Query<(&DockableTag, &Position)>,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
-    let planet_id = &trigger.event().planet;
-
-    let Some((
-        ship_entity,
-        _,
-        ship_position,
-        membership,
-        docked,
-        active_quests,
-        mut ship,
-        mut wallet,
-    )) = ships
+    let system = ships
         .iter_mut()
-        .find(|(_, ship_owner, _, _, _, _, _, _)| ship_owner.0 == owner)
-    else {
-        return;
-    };
-    if docked.is_some() {
-        notice(&mut commands, trigger.client_id, "You are already docked.");
-        return;
-    }
-    let Some((planet, planet_position)) = planets
-        .iter()
-        .find(|(tag, _)| tag.id == *planet_id && tag.system == membership.0)
-    else {
-        notice(
-            &mut commands,
-            trigger.client_id,
-            "No planet answers by that name.",
-        );
-        return;
-    };
-    if ship_position.0.distance(planet_position.0) > LAND_RANGE + planet.radius {
-        notice(
-            &mut commands,
-            trigger.client_id,
-            "You are not close enough to land.",
-        );
-        return;
-    }
-
-    ship.0.velocity = Vec2::ZERO;
-    commands.entity(ship_entity).insert(DockedAt {
-        system: membership.0.clone(),
-        planet: planet.id.clone(),
+        .find(|(_, ship_owner, ..)| ship_owner.0 == owner)
+        .map(|(_, _, membership, ..)| membership.0.clone());
+    let target = ports.iter().find(|(port, _)| {
+        port.kind == DockableKind::Planet
+            && Some(&port.system) == system.as_ref()
+            && port.id == trigger.event().planet
     });
-
-    let missing = ship.0.max_fuel - ship.0.fuel;
-    let cost = (missing * FUEL_PRICE_PER_UNIT).ceil() as u32;
-    if cost == 0 {
-        notice(
-            &mut commands,
+    if let Some((port, position)) = target {
+        try_dock(
+            owner,
             trigger.client_id,
-            format!("Docked at {}. Tanks already full.", planet.name),
-        );
-    } else if wallet.0.credits >= cost {
-        wallet.0.credits -= cost;
-        ship.0.fuel = ship.0.max_fuel;
-        notice(
+            port,
+            position.0,
             &mut commands,
-            trigger.client_id,
-            format!("Docked at {}. Refuel: {cost} cr.", planet.name),
+            &content.0,
+            &mut rng,
+            &mut ships,
         );
     } else {
         notice(
             &mut commands,
             trigger.client_id,
+            "No planet answers by that name.",
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn on_request_dock(
+    trigger: On<FromClient<RequestDock>>,
+    mut commands: Commands,
+    clients: Query<&NetworkId>,
+    content: Res<Content>,
+    mut rng: ResMut<EncounterRng>,
+    mut ships: DockingShips,
+    ports: Query<(&DockableTag, &Position)>,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let event = trigger.event();
+    if let Some((port, position)) = ports
+        .iter()
+        .find(|(port, _)| port.system == event.system && port.id == event.location)
+    {
+        try_dock(
+            owner,
+            trigger.client_id,
+            port,
+            position.0,
+            &mut commands,
+            &content.0,
+            &mut rng,
+            &mut ships,
+        );
+    } else {
+        notice(
+            &mut commands,
+            trigger.client_id,
+            "No docking port answers by that name.",
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_dock(
+    owner: u64,
+    client: ClientId,
+    port: &DockableTag,
+    position: Vec2,
+    commands: &mut Commands,
+    pack: &ContentPack,
+    rng: &mut EncounterRng,
+    ships: &mut DockingShips,
+) {
+    let Some((
+        ship_entity,
+        _,
+        mut membership,
+        docked,
+        active_quests,
+        mut ship,
+        mut wallet,
+        mut control,
+    )) = ships
+        .iter_mut()
+        .find(|(_, ship_owner, ..)| ship_owner.0 == owner)
+    else {
+        return;
+    };
+    if docked.is_some() {
+        notice(commands, client, "You are already docked.");
+        return;
+    }
+    if ship.0.is_destroyed() {
+        return;
+    }
+    let distance = ship.0.position.distance(position);
+    if !distance.is_finite() || distance > LAND_RANGE + port.radius {
+        notice(commands, client, "You are not close enough to dock.");
+        return;
+    }
+    membership.0.clone_from(&port.system);
+    ship.0.velocity = Vec2::ZERO;
+    *control = Control::default();
+    if port.kind == DockableKind::Station {
+        let normal = (ship.0.position - position).normalize_or(Vec2::X);
+        let offset = normal * (port.radius + SHIP_RADIUS + 12.0);
+        ship.0.position = position + offset;
+        commands.entity(ship_entity).insert(DockingOffset(offset));
+    }
+    commands.entity(ship_entity).insert(DockedAt {
+        system: port.system.clone(),
+        location: port.id.clone(),
+        kind: port.kind,
+    });
+    commands
+        .entity(ship_entity)
+        .remove::<(ChiefEncounter, PendingEncounter)>();
+    let missing = ship.0.max_fuel - ship.0.fuel;
+    let cost = (missing * FUEL_PRICE_PER_UNIT).ceil() as u32;
+    if cost == 0 {
+        notice(
+            commands,
+            client,
+            format!("Docked at {}. Tanks already full.", port.name),
+        );
+    } else if wallet.0.credits >= cost {
+        wallet.0.credits -= cost;
+        ship.0.fuel = ship.0.max_fuel;
+        notice(
+            commands,
+            client,
+            format!("Docked at {}. Refuel: {cost} cr.", port.name),
+        );
+    } else {
+        notice(
+            commands,
+            client,
             format!(
                 "Docked at {}. The fuel clerk wants cash you don't have.",
-                planet.name
+                port.name
             ),
         );
     }
 
     let empty_quests = ActiveQuests::default();
     let quests = active_quests.unwrap_or(&empty_quests);
-    if let Some((encounter, pending)) = roll_chief_encounter(
-        &content.0,
-        &mut rng,
-        &membership.0,
-        &planet.id,
-        &wallet.0,
-        quests,
-    ) {
+    if let Some((encounter, pending)) =
+        roll_chief_encounter(pack, rng, &membership.0, &port.id, &wallet.0, quests)
+    {
         commands.entity(ship_entity).insert((encounter, pending));
     }
 }
@@ -2315,9 +2480,8 @@ fn roll_chief_encounter(
     account: &Account,
     active_quests: &ActiveQuests,
 ) -> Option<(ChiefEncounter, PendingEncounter)> {
-    let system_def = pack.system(system_id)?;
-    let planet_def = system_def.planets.iter().find(|p| p.id == planet_id)?;
-    let chief = planet_def.chief.as_ref()?;
+    let port_def = pack.dockable(system_id, planet_id)?;
+    let chief = port_def.host()?;
 
     if let Some(quest) = active_quests.quests.iter().find(|q| match &q.target {
         QuestTarget::Delivery {
@@ -2408,9 +2572,9 @@ fn roll_chief_encounter(
     }
 
     let offer_threshold = if available_quests.is_empty() { 60 } else { 80 };
-    if !planet_def.commodities.is_empty() && roll < offer_threshold {
-        let idx = rng.next_u32(planet_def.commodities.len() as u32) as usize;
-        let comm = &planet_def.commodities[idx];
+    if !port_def.commodities().is_empty() && roll < offer_threshold {
+        let idx = rng.next_u32(port_def.commodities().len() as u32) as usize;
+        let comm = &port_def.commodities()[idx];
         let qty = OFFER_QTY;
         let cost = (comm.price * qty) / 2;
         let encounter = ChiefEncounter {
@@ -2468,26 +2632,50 @@ fn roll_chief_encounter(
     Some((encounter, pending))
 }
 
+type UndockingShips<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static Owner,
+        &'static DockedAt,
+        &'static mut Ship,
+        &'static mut Control,
+        Option<&'static DockingOffset>,
+    ),
+>;
+
 fn on_request_lift_off(
     trigger: On<FromClient<RequestLiftOff>>,
     mut commands: Commands,
     clients: Query<&NetworkId>,
-    ships: Query<(Entity, &Owner, &DockedAt)>,
+    mut ships: UndockingShips,
+    ports: Query<(&DockableTag, &Position)>,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
-    let Some((ship_entity, _, docked)) = ships
-        .iter()
-        .find(|(_, ship_owner, _)| ship_owner.0 == owner)
+    let Some((ship_entity, _, docked, mut ship, mut control, offset)) = ships
+        .iter_mut()
+        .find(|(_, ship_owner, ..)| ship_owner.0 == owner)
     else {
         return;
     };
     info!(
         "server: owner={owner} lifted off from {}/{}",
-        docked.system, docked.planet
+        docked.system, docked.location
     );
+    if let Some(offset) = offset
+        && let Some((port, position)) = ports
+            .iter()
+            .find(|(port, _)| port.system == docked.system && port.id == docked.location)
+    {
+        ship.0.position =
+            position.0 + offset.0.normalize_or(Vec2::X) * (port.radius + SHIP_RADIUS + 16.0);
+    }
+    ship.0.velocity = Vec2::ZERO;
+    *control = Control::default();
     commands
         .entity(ship_entity)
-        .remove::<(DockedAt, ChiefEncounter, PendingEncounter)>();
+        .remove::<(DockedAt, DockingOffset, ChiefEncounter, PendingEncounter)>();
 }
 
 fn race_greeting(race: &str) -> &'static str {
@@ -2739,7 +2927,7 @@ fn on_respond_to_encounter(
     };
     let location = docked.map_or_else(
         || "open-space".to_owned(),
-        |d| format!("{}/{}", d.system, d.planet),
+        |d| format!("{}/{}", d.system, d.location),
     );
     info!(
         "server: owner={owner} responded to encounter at {location} with choice='{resolved_choice}' (raw='{raw_choice}')"
@@ -2998,8 +3186,12 @@ fn on_buy_commodity(
     else {
         return;
     };
-    let Some(price) = planet_price(&content.0, &docked.system, &docked.planet, &event.commodity)
-    else {
+    let Some(price) = planet_price(
+        &content.0,
+        &docked.system,
+        &docked.location,
+        &event.commodity,
+    ) else {
         notice(
             &mut commands,
             trigger.client_id,
@@ -3057,8 +3249,12 @@ fn on_sell_commodity(
     else {
         return;
     };
-    let Some(price) = planet_price(&content.0, &docked.system, &docked.planet, &event.commodity)
-    else {
+    let Some(price) = planet_price(
+        &content.0,
+        &docked.system,
+        &docked.location,
+        &event.commodity,
+    ) else {
         notice(
             &mut commands,
             trigger.client_id,
@@ -3114,10 +3310,9 @@ fn on_set_warp(
 }
 
 fn planet_price(pack: &ContentPack, system: &str, planet: &str, commodity: &str) -> Option<u32> {
-    let system = pack.system(system)?;
-    let planet = system.planets.iter().find(|p| p.id == planet)?;
-    let entry = planet
-        .commodities
+    let port = pack.dockable(system, planet)?;
+    let entry = port
+        .commodities()
         .iter()
         .find(|c| c.id == commodity)
         .map(|c| c.price)?;
@@ -3143,6 +3338,8 @@ mod tests {
     use crate::{
         EMBEDDED_CLIENT_ID, PROTOCOL_ID, TickMode, attach_memory, attach_udp, build_server_app,
     };
+
+    mod stations;
 
     struct Harness {
         server: App,
@@ -4263,7 +4460,8 @@ mod tests {
             let (mut app, ship, center) = black_hole_test_app(seed);
             app.world_mut().entity_mut(ship).insert(DockedAt {
                 system: "sol".into(),
-                planet: "earth".into(),
+                location: "earth".into(),
+                kind: DockableKind::Planet,
             });
             let initial_rng = app.world().resource::<EncounterRng>().0;
             for position in [center + Vec2::X * 300.0, center] {
@@ -4526,7 +4724,7 @@ mod tests {
         });
         h.step_until(100, |h| h.client_component::<DockedAt>(my_ship).is_some());
         let docked = h.client_component::<DockedAt>(my_ship).unwrap();
-        assert_eq!(docked.planet, "earth");
+        assert_eq!(docked.location, "earth");
 
         let (star_pos, star_radius) = h.star_in_system("sol").expect("sol has a star");
         let initial = h.client_component::<Hull>(my_ship).unwrap();

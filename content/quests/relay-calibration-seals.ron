@@ -1,0 +1,8 @@
+(
+    id: "relay-calibration-seals",
+    name: "Calibration Seals for Wayfarer",
+    giver: ("sol", "lin-relay"),
+    kind: Delivery(commodity: "machinery", qty: 2, destination: ("sol", "wayfarer-exchange")),
+    reward_credits: 350,
+    description: "Two cases of calibration seals for Wayfarer's manifest scanners. Master Sato has been approving cargo by eye. His eye is good; the customs appeal board prefers machinery.",
+)

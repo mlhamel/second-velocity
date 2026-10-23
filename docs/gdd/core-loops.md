@@ -6,13 +6,13 @@ The game is built on four interlocking loops. Everything else hangs off them.
 
 ## 1. Trading (minutes)
 
-Buy low, sell high between worlds. Each planet has its own commodities and
-prices. Money buys better ships and equipment.
+Buy low, sell high between worlds and stations. Each docking port has its own
+commodities and prices. Money buys better ships and equipment.
 
 ## 2. Missions (tens of minutes)
 
-Offered by planet chiefs on docking (alongside resource offers and tribute
-demands): delivery, bounty hunting, and timed contracts (see
+Offered by planet chiefs and station masters on docking (alongside resource
+offers and tribute demands): delivery, bounty hunting, and timed contracts (see
 [encounters.md](encounters.md)). Reputation with factions opens deeper story
 arcs.
 

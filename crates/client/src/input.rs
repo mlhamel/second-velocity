@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_data::ContentPack;
 use evr_protocol::{
-    BuyCommodity, ChiefEncounter, DockedAt, HailShip, PlanetTag, Position, RequestLand,
+    BuyCommodity, ChiefEncounter, DockableTag, DockedAt, HailShip, Position, RequestDock,
     RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
     ShipInfo, SystemMembership,
 };
@@ -17,6 +17,15 @@ struct InputState {
     turn: i32,
     firing: bool,
     warp: bool,
+    docked: Option<bool>,
+}
+
+#[derive(Debug, PartialEq)]
+enum FlightChange {
+    Throttle(f32),
+    Turn(f32),
+    Firing(bool),
+    Warp(bool),
 }
 
 #[derive(Resource)]
@@ -36,37 +45,62 @@ fn poll_flight_input(
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<InputState>,
     mut commands: Commands,
+    my_id: Res<MyNetworkId>,
+    ships: Query<(&ShipInfo, Option<&DockedAt>)>,
 ) {
-    let throttle = keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
-    if throttle != state.throttle {
+    let Some((_, docked)) = ships.iter().find(|(info, _)| info.owner == Some(my_id.0)) else {
+        state.docked = None;
+        return;
+    };
+    for change in flight_changes(&mut state, &keys, docked.is_some()) {
+        match change {
+            FlightChange::Throttle(value) => commands.client_trigger(SetThrottle(value)),
+            FlightChange::Turn(value) => commands.client_trigger(SetTurn(value)),
+            FlightChange::Firing(value) => commands.client_trigger(SetFiring(value)),
+            FlightChange::Warp(value) => commands.client_trigger(SetWarp(value)),
+        }
+    }
+}
+
+fn flight_changes(
+    state: &mut InputState,
+    keys: &ButtonInput<KeyCode>,
+    docked: bool,
+) -> Vec<FlightChange> {
+    let force = state.docked != Some(docked);
+    state.docked = Some(docked);
+    let mut changes = Vec::new();
+    let throttle = !docked && keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
+    if force || throttle != state.throttle {
         state.throttle = throttle;
         let val = if throttle { 1.0 } else { 0.0 };
         debug!("client: SetThrottle({val})");
-        commands.client_trigger(SetThrottle(val));
+        changes.push(FlightChange::Throttle(val));
     }
 
     let left = i32::from(keys.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]));
     let right = i32::from(keys.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]));
-    let turn = right - left;
-    if turn != state.turn {
+    let turn = if docked { 0 } else { right - left };
+    if force || turn != state.turn {
         state.turn = turn;
         debug!("client: SetTurn({turn})");
-        commands.client_trigger(SetTurn(turn as f32));
+        changes.push(FlightChange::Turn(turn as f32));
     }
 
-    let firing = keys.pressed(KeyCode::Space);
-    if firing != state.firing {
+    let firing = !docked && keys.pressed(KeyCode::Space);
+    if force || firing != state.firing {
         state.firing = firing;
         debug!("client: SetFiring({firing})");
-        commands.client_trigger(SetFiring(firing));
+        changes.push(FlightChange::Firing(firing));
     }
 
-    let warp = keys.pressed(KeyCode::KeyJ);
-    if warp != state.warp {
+    let warp = !docked && keys.pressed(KeyCode::KeyJ);
+    if force || warp != state.warp {
         state.warp = warp;
         info!("client: SetWarp({warp})");
-        commands.client_trigger(SetWarp(warp));
+        changes.push(FlightChange::Warp(warp));
     }
+    changes
 }
 
 const DIGIT_KEYS: [KeyCode; 5] = [
@@ -91,9 +125,9 @@ fn poll_action_input(
         Option<&DockedAt>,
         Option<&ChiefEncounter>,
     )>,
-    planets: Query<(&PlanetTag, &Position)>,
+    planets: Query<(&DockableTag, &Position)>,
 ) {
-    let Some((_, position, membership, docked, encounter)) = ships
+    let Some((_, position, _membership, docked, encounter)) = ships
         .iter()
         .find(|(info, _, _, _, _)| info.owner == Some(my_id.0))
     else {
@@ -103,15 +137,15 @@ fn poll_action_input(
     if docked.is_none() && keys.just_pressed(KeyCode::KeyL) {
         let candidate = planets
             .iter()
-            .filter(|(tag, _)| tag.system == membership.0)
             .filter(|(tag, planet_position)| {
                 position.0.distance(planet_position.0) <= LAND_RANGE + tag.radius
             })
             .min_by_key(|(_, planet_position)| position.0.distance(planet_position.0).to_bits());
         if let Some((planet, _)) = candidate {
-            info!("client: RequestLand({})", planet.id);
-            commands.client_trigger(RequestLand {
-                planet: planet.id.clone(),
+            info!("client: RequestDock({}/{})", planet.system, planet.id);
+            commands.client_trigger(RequestDock {
+                system: planet.system.clone(),
+                location: planet.id.clone(),
             });
         }
     }
@@ -146,13 +180,10 @@ fn poll_action_input(
         return;
     };
 
-    let Some(system) = content.0.system(&docked.system) else {
+    let Some(planet) = content.0.dockable(&docked.system, &docked.location) else {
         return;
     };
-    let Some(planet) = system.planets.iter().find(|p| p.id == docked.planet) else {
-        return;
-    };
-    for (index, commodity) in planet.commodities.iter().enumerate() {
+    for (index, commodity) in planet.commodities().iter().enumerate() {
         let Some(&digit) = DIGIT_KEYS.get(index) else {
             continue;
         };
@@ -172,5 +203,58 @@ fn poll_action_input(
                 });
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_controls_resume_after_docking_and_undocking() {
+        let mut state = InputState::default();
+        let mut keys = ButtonInput::default();
+        for key in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::Space, KeyCode::KeyJ] {
+            keys.press(key);
+        }
+        let held = vec![
+            FlightChange::Throttle(1.0),
+            FlightChange::Turn(-1.0),
+            FlightChange::Firing(true),
+            FlightChange::Warp(true),
+        ];
+        assert_eq!(flight_changes(&mut state, &keys, false), held);
+        assert_eq!(
+            flight_changes(&mut state, &keys, true),
+            vec![
+                FlightChange::Throttle(0.0),
+                FlightChange::Turn(0.0),
+                FlightChange::Firing(false),
+                FlightChange::Warp(false),
+            ]
+        );
+        assert!(flight_changes(&mut state, &keys, true).is_empty());
+        assert_eq!(flight_changes(&mut state, &keys, false), held);
+        assert!(flight_changes(&mut state, &keys, false).is_empty());
+    }
+
+    #[test]
+    fn undocking_resends_false_states_after_keys_are_released_while_docked() {
+        let mut state = InputState::default();
+        let mut keys = ButtonInput::default();
+        keys.press(KeyCode::KeyW);
+        flight_changes(&mut state, &keys, false);
+        flight_changes(&mut state, &keys, true);
+        keys.release(KeyCode::KeyW);
+        assert!(flight_changes(&mut state, &keys, true).is_empty());
+        assert_eq!(
+            flight_changes(&mut state, &keys, false),
+            vec![
+                FlightChange::Throttle(0.0),
+                FlightChange::Turn(0.0),
+                FlightChange::Firing(false),
+                FlightChange::Warp(false),
+            ]
+        );
     }
 }

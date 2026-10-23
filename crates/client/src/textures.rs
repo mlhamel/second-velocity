@@ -7,6 +7,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 pub struct Textures {
     pub ship: Handle<Image>,
     pub planet: Handle<Image>,
+    pub station: Handle<Image>,
     pub star: Handle<Image>,
     pub black_hole: Handle<Image>,
     pub glow: Handle<Image>,
@@ -21,6 +22,7 @@ pub(crate) fn create_textures(
 ) {
     let ship = images.add(ship_image(96));
     let planet = images.add(planet_image(128));
+    let station = images.add(station_image(128));
     let star = images.add(star_image(128));
     let black_hole = images.add(black_hole_image(128));
     let glow = images.add(glow_image(64));
@@ -45,6 +47,7 @@ pub(crate) fn create_textures(
     commands.insert_resource(Textures {
         ship,
         planet,
+        station,
         star,
         black_hole,
         glow,
@@ -202,6 +205,31 @@ fn planet_image(size: u32) -> Image {
                 data[index + 2] = 255;
                 data[index + 3] = alpha;
             }
+        }
+    }
+    image_from_rgba(size, data)
+}
+
+fn station_image(size: u32) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let dx = (x as f32 + 0.5) / size as f32 - 0.5;
+            let dy = (y as f32 + 0.5) / size as f32 - 0.5;
+            let radius = dx.hypot(dy);
+            let color = if radius < 0.09 {
+                [95, 230, 220, 255]
+            } else if (0.25..0.35).contains(&radius)
+                || (dx.abs() < 0.035 || dy.abs() < 0.035) && radius < 0.40
+            {
+                [185, 200, 215, 255]
+            } else if (0.12..0.45).contains(&dx.abs()) && (0.06..0.16).contains(&dy.abs()) {
+                [50, 110, 185, 255]
+            } else {
+                [0, 0, 0, 0]
+            };
+            let index = ((y * size + x) * 4) as usize;
+            data[index..index + 4].copy_from_slice(&color);
         }
     }
     image_from_rgba(size, data)

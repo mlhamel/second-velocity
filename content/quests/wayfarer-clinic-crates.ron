@@ -1,0 +1,8 @@
+(
+    id: "wayfarer-clinic-crates",
+    name: "Wayfarer Med-Crates to Earth",
+    giver: ("sol", "wayfarer-exchange"),
+    kind: Delivery(commodity: "medicine", qty: 2, destination: ("sol", "earth")),
+    reward_credits: 280,
+    description: "Two tons of sealed clinic supplies for Earth. The Directorate calls Wayfarer an unlicensed distributor until it needs something before lunch. Port Director Lin will sign for them.",
+)

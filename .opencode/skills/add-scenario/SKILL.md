@@ -20,6 +20,10 @@ latency, entity load, and gameplay efficiency.
    - Reference only valid system, planet, commodity, and quest IDs from
      `content/`
 2. Add `"scenarios/<id>.ron"` to `scenarios:` in `content/manifest.ron`
+   - For stations, use `FlyToStation(system: "<id>", station: "<id>", dock: true)`
+     to track the moving replicated position. `Dock(system: "<id>", location:
+     "<id>")` docks when already nearby. `AssertDocked(Some("<station-id>"))`
+     works for stations too. Explicit docking checks the complete system/ID.
 3. Validate content schema and cross-references:
    `cargo test -p evr-data`
 4. Run the scenario as a benchmark and integration test:

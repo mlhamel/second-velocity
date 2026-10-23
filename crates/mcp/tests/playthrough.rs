@@ -16,6 +16,56 @@ fn steer_to(target: [f64; 2], position: [f64; 2], heading: f64) -> (f32, f32) {
     (turn as f32, throttle as f32)
 }
 
+#[test]
+fn station_observation_and_docking_survive_reconnect() {
+    let content = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+    let mut harness = Harness::new(&content);
+    let initial = harness.observe();
+    assert_eq!(initial["stations"].as_array().unwrap().len(), 2);
+    let position = initial["stations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "lin-relay")
+        .unwrap()["position"]
+        .clone();
+    {
+        let mut query = harness
+            .server
+            .world_mut()
+            .query::<(&ShipInfo, &mut evr_server::gameplay::Ship)>();
+        for (info, mut ship) in query.iter_mut(harness.server.world_mut()) {
+            if info.owner == Some(EMBEDDED_CLIENT_ID as u64) {
+                ship.0.position = bevy::math::Vec2::new(
+                    position[0].as_f64().unwrap() as f32 + 100.0,
+                    position[1].as_f64().unwrap() as f32,
+                );
+                ship.0.velocity = bevy::math::Vec2::ZERO;
+            }
+        }
+    }
+    harness.dock("sol", "lin-relay");
+    harness.advance(15);
+    let before = harness.observe();
+    assert_eq!(before["docked"], "lin-relay");
+    assert_eq!(before["docked_location"]["kind"], "station");
+    assert_eq!(before["market"][0]["price"], 10);
+    harness.force_reconnect();
+    let after = harness.observe();
+    assert_eq!(after["docked_location"], before["docked_location"]);
+    assert_eq!(after["ship"]["credits"], before["ship"]["credits"]);
+    assert_eq!(after["encounter"]["chief_name"], "Relay Master Imani");
+    let player = vec2(&after["ship"], "position");
+    let station = after["stations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "lin-relay")
+        .unwrap();
+    let station_pos = vec2(station, "position");
+    assert!(((player[0] - station_pos[0]).hypot(player[1] - station_pos[1]) - 62.0).abs() < 0.1);
+}
+
 fn vec2(value: &Value, key: &str) -> [f64; 2] {
     let raw = value[key].as_array().expect("vec2 must be an array");
     [raw[0].as_f64().expect("x"), raw[1].as_f64().expect("y")]
@@ -266,7 +316,7 @@ fn quest_loop_playthrough() {
 fn all_pack_scenarios_pass() {
     let content = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let reports = evr_mcp::run_scenarios(&content, None).expect("scenarios must load and run");
-    assert_eq!(reports.len(), 8);
+    assert_eq!(reports.len(), 10);
     println!("\n{}", evr_mcp::format_markdown_table(&reports));
     for report in &reports {
         assert!(

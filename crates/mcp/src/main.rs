@@ -37,6 +37,14 @@ struct LandArgs {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct DockArgs {
+    /// Owning system id from observe.stations or observe.planets.
+    system: String,
+    /// Station or planet id; the server checks actual spatial docking range.
+    location: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct TradeArgs {
     /// Commodity id (see observe.market while docked)
     commodity: String,
@@ -74,6 +82,10 @@ enum Command {
         firing: bool,
     },
     Land(String),
+    Dock {
+        system: String,
+        location: String,
+    },
     LiftOff,
     Trade {
         commodity: String,
@@ -178,7 +190,17 @@ impl GameMcp {
         self.call(Command::Land(planet)).await
     }
 
-    #[tool(description = "Lift off from the planet you are docked at. Returns the updated state.")]
+    #[tool(
+        description = "Dock at a station or planet identified by owning system and location id. Fly into range first; orbital stations move. Returns the updated state."
+    )]
+    async fn dock(
+        &self,
+        Parameters(DockArgs { system, location }): Parameters<DockArgs>,
+    ) -> String {
+        self.call(Command::Dock { system, location }).await
+    }
+
+    #[tool(description = "Undock from your current planet or station. Returns the updated state.")]
     async fn lift_off(&self) -> String {
         self.call(Command::LiftOff).await
     }
@@ -261,6 +283,11 @@ fn game_thread(content_root: PathBuf, mut rx: mpsc::Receiver<(Command, oneshot::
                 firing,
             } => {
                 harness.set_flight(throttle, turn, firing);
+                harness.advance(SETTLE_TICKS);
+                json(&harness.observe())
+            }
+            Command::Dock { system, location } => {
+                harness.dock(&system, &location);
                 harness.advance(SETTLE_TICKS);
                 json(&harness.observe())
             }

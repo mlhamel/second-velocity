@@ -40,6 +40,16 @@ pub enum ScenarioStep {
     FlyToSystem {
         system: String,
     },
+    FlyToStation {
+        system: String,
+        station: String,
+        #[serde(default)]
+        dock: bool,
+    },
+    Dock {
+        system: String,
+        location: String,
+    },
     FlyToStar {
         system: String,
         #[serde(default = "default_star_approach")]

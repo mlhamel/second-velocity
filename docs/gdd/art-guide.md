@@ -23,7 +23,9 @@ the names and sizes, and the game picks them up automatically.
 |---|---|---|---|
 | Ship | `assets/textures/ships/<ship-id>.png` | 128×128 | **Faces +x (east).** Full-color pre-rendered top-down sprite on transparent background (`shuttle.png`, `turncoat.png`, `patrol.png`) |
 | Planet | `assets/textures/planets/<planet-id>.png` | 128×128 | Natural colors; no tint applied |
+| Station | `assets/textures/stations/docking-ring.png` | 128×128 | Transparent top-down docking ring; station content can select its own sprite |
 | Chief | `assets/textures/chiefs/<planet-id>.png` | 128×128 | Bust portrait on dark/transparent background; displayed in the docking encounter panel |
+| Station master | `assets/textures/chiefs/<station-id>.png` | 128×128 | Uses the same encounter panel and procedural fallback as chiefs |
 
 - RGBA PNG, transparent background
 - Ship sprites render at ~44 px world size in natural colors (fallback untextured hulls use faction-tinted 24×12 rectangles); planets at `radius * 2`

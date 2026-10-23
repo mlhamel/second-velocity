@@ -237,6 +237,96 @@ fn execute_step(
                 hull_damage_taken,
             )
         }
+        ScenarioStep::FlyToStation {
+            system,
+            station,
+            dock,
+        } => {
+            for _ in 0..remaining_budget.saturating_sub(SETTLE_TICKS) {
+                let state = harness.observe();
+                if state["alive"].as_bool() != Some(true) {
+                    return Err("ship destroyed while approaching station".into());
+                }
+                if !state["docked"].is_null() {
+                    return Err("undock before flying to a station".into());
+                }
+                let (target, radius) = {
+                    let mut query = harness
+                        .server
+                        .world_mut()
+                        .query::<(&evr_protocol::DockableTag, &Position)>();
+                    query
+                        .iter(harness.server.world())
+                        .find(|(tag, _)| {
+                            tag.system == *system
+                                && tag.id == *station
+                                && tag.kind == evr_protocol::DockableKind::Station
+                        })
+                        .map(|(tag, pos)| (pos.0, tag.radius))
+                        .ok_or_else(|| format!("station {system}/{station} not found"))?
+                };
+                let pos = &state["ship"]["position"];
+                let dx = f64::from(target.x) - pos[0].as_f64().unwrap_or(0.0);
+                let dy = f64::from(target.y) - pos[1].as_f64().unwrap_or(0.0);
+                let distance = dx.hypot(dy);
+                if distance <= f64::from(radius + 130.0) {
+                    harness.set_warp(false);
+                    harness.set_flight(0.0, 0.0, false);
+                    if *dock {
+                        harness.dock(system, station);
+                    }
+                    advance_tracking(
+                        harness,
+                        SETTLE_TICKS,
+                        prev_fuel,
+                        prev_hull,
+                        fuel_consumed,
+                        hull_damage_taken,
+                    );
+                    if *dock && !docked_at(&harness.observe(), system, station) {
+                        return Err("station docking request was rejected".into());
+                    }
+                    return Ok(());
+                }
+                let heading = state["ship"]["heading"].as_f64().unwrap_or(0.0);
+                let diff = (dy.atan2(dx) - heading + PI).rem_euclid(2.0 * PI) - PI;
+                harness.set_warp(distance > 600.0 && diff.abs() < 0.35);
+                harness.set_flight(
+                    if diff.abs() < 0.6 { 1.0 } else { 0.2 },
+                    diff.signum() as f32,
+                    false,
+                );
+                advance_tracking(
+                    harness,
+                    1,
+                    prev_fuel,
+                    prev_hull,
+                    fuel_consumed,
+                    hull_damage_taken,
+                );
+            }
+            Err(format!(
+                "timed out approaching moving station {system}/{station}"
+            ))
+        }
+        ScenarioStep::Dock { system, location } => {
+            if remaining_budget < SETTLE_TICKS {
+                return Err("not enough ticks left to dock".into());
+            }
+            harness.dock(system, location);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            if !docked_at(&harness.observe(), system, location) {
+                return Err(format!("failed to dock at {system}/{location}"));
+            }
+            Ok(())
+        }
         ScenarioStep::FlyToStar { system, approach } => {
             let (star_pos, star_radius) = star_world_pos(harness, system)
                 .ok_or_else(|| format!("star for system {system} not found in server world"))?;
@@ -898,6 +988,11 @@ fn execute_step(
     }
 }
 
+fn docked_at(state: &Value, system: &str, location: &str) -> bool {
+    state["docked_location"]["system"].as_str() == Some(system)
+        && state["docked_location"]["id"].as_str() == Some(location)
+}
+
 fn advance_tracking(
     harness: &mut Harness,
     ticks: u32,
@@ -1177,6 +1272,20 @@ fn format_i64_delta(current: u64, previous: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dock_confirmation_requires_owning_system_and_location() {
+        let state =
+            serde_json::json!({"docked": "port", "docked_location": {"system": "a", "id": "port"}});
+        assert!(docked_at(&state, "a", "port"));
+        assert!(!docked_at(&state, "b", "port"));
+        assert!(!docked_at(&state, "a", "other"));
+        assert!(!docked_at(
+            &serde_json::json!({"docked_location": null}),
+            "a",
+            "port"
+        ));
+    }
 
     #[test]
     fn markdown_table_with_baseline_includes_percentage_variations() {

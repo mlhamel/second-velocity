@@ -5,8 +5,8 @@ use bevy::color::Mix;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_protocol::{
-    BlackHoleTag, Explosion, Heading, Hull, Meteorite, PlanetTag, Position, Projectile, ShipInfo,
-    ShipKind, StarTag,
+    BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, PlanetTag,
+    Position, Projectile, ShipInfo, ShipKind, StarTag,
 };
 
 const FLASH_SECS: f32 = 0.18;
@@ -19,7 +19,7 @@ impl Plugin for VisualsPlugin {
             Update,
             (
                 attach_ship_visuals,
-                attach_planet_visuals,
+                (attach_planet_visuals, attach_station_visuals).chain(),
                 attach_star_visuals,
                 attach_black_hole_visuals,
                 attach_projectile_visuals,
@@ -29,7 +29,7 @@ impl Plugin for VisualsPlugin {
                 tick_flashes,
                 debris_flight,
                 sync_ship_transforms,
-                sync_planet_transforms,
+                (sync_planet_transforms, sync_station_transforms).chain(),
                 sync_star_transforms,
                 sync_black_hole_transforms,
                 sync_projectile_transforms,
@@ -47,6 +47,9 @@ struct ShipVisual;
 
 #[derive(Component)]
 struct PlanetVisual;
+
+#[derive(Component)]
+struct StationVisual;
 
 #[derive(Component)]
 struct StarVisual;
@@ -154,6 +157,38 @@ fn attach_planet_visuals(
         sprite.color = color;
         sprite.custom_size = Some(Vec2::splat(planet.radius * 2.0));
         commands.entity(entity).insert((PlanetVisual, sprite));
+    }
+}
+
+type AddedPorts<'w, 's> =
+    Query<'w, 's, (Entity, &'static DockableTag), (Added<DockableTag>, With<Remote>)>;
+
+fn attach_station_visuals(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    asset_server: Res<AssetServer>,
+    content: Res<ClientContent>,
+    added: AddedPorts,
+) {
+    for (entity, port) in &added {
+        if port.kind != DockableKind::Station {
+            continue;
+        }
+        let path = content
+            .0
+            .system(&port.system)
+            .and_then(|s| s.stations.iter().find(|s| s.id == port.id))
+            .and_then(|s| s.sprite.clone());
+        let image = path.map_or_else(|| textures.station.clone(), |path| asset_server.load(path));
+        let mut sprite = Sprite::from_image(image);
+        sprite.custom_size = Some(Vec2::splat(port.radius * 2.2));
+        commands.entity(entity).insert((StationVisual, sprite));
+    }
+}
+
+fn sync_station_transforms(mut stations: Query<(&Position, &mut Transform), With<StationVisual>>) {
+    for (position, mut transform) in &mut stations {
+        transform.translation = position.0.extend(-0.5);
     }
 }
 

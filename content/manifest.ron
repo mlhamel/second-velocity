@@ -60,6 +60,8 @@
         "quests/hawking-lane-bounty.ron",
         "quests/greenreach-cold-medicine.ron",
         "quests/hawking-refinery-parts.ron",
+        "quests/relay-calibration-seals.ron",
+        "quests/wayfarer-clinic-crates.ron",
     ],
     scenarios: [
         "scenarios/sol-centauri-trade.ron",
@@ -70,5 +72,7 @@
         "scenarios/sun-heat-damage.ron",
         "scenarios/black-hole-teleport.ron",
         "scenarios/black-hole-death.ron",
+        "scenarios/station-orbital-trade.ron",
+        "scenarios/station-delivery-loop.ron",
     ],
 )

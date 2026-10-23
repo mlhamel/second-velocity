@@ -1,0 +1,20 @@
+(
+    id: "station-orbital-trade",
+    name: "Orbital Station Docking and Market",
+    description: "Track Lin Relay in orbit, dock, trade at its own prices, remain attached and safe, then undock.",
+    encounter_seed: Some(90),
+    max_ticks: 1500,
+    steps: [
+        FlyToStation(system: "sol", station: "lin-relay", dock: true),
+        AssertDocked(Some("lin-relay")),
+        Trade(action: "buy", commodity: "food", qty: 2),
+        AssertCargo(commodity: "food", min_qty: 2),
+        Trade(action: "sell", commodity: "food", qty: 1),
+        AssertCargo(commodity: "food", min_qty: 1),
+        Advance(ticks: 120),
+        AssertDocked(Some("lin-relay")),
+        AssertAlive(true),
+        LiftOff,
+        AssertDocked(None),
+    ],
+)

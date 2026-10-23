@@ -14,8 +14,8 @@ fn base_pack_loads() {
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
     assert_eq!(pack.outfits.len(), 1);
-    assert_eq!(pack.quests.len(), 10);
-    assert_eq!(pack.scenarios.len(), 8);
+    assert_eq!(pack.quests.len(), 12);
+    assert_eq!(pack.scenarios.len(), 10);
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");

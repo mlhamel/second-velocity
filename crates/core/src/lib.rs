@@ -1,5 +1,20 @@
 use glam::Vec2;
 
+/// Scripted circular orbit; using elapsed simulation time avoids incremental drift.
+pub fn orbit_position(
+    center: Vec2,
+    radius: f32,
+    period_secs: f32,
+    phase: f32,
+    elapsed: f64,
+) -> Vec2 {
+    let angle = (f64::from(phase)
+        + elapsed.rem_euclid(f64::from(period_secs)) / f64::from(period_secs)
+            * std::f64::consts::TAU)
+        .rem_euclid(std::f64::consts::TAU);
+    center + Vec2::new(angle.cos() as f32, angle.sin() as f32) * radius
+}
+
 #[derive(Debug, Clone)]
 pub struct ShipState {
     pub position: Vec2,
@@ -280,6 +295,27 @@ pub fn split_meteorite_velocities(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scripted_orbit_preserves_radius_phase_and_period() {
+        let center = Vec2::new(500.0, 20.0);
+        assert_eq!(
+            orbit_position(center, 200.0, 100.0, 0.0, 0.0),
+            center + Vec2::X * 200.0
+        );
+        assert!(
+            (orbit_position(center, 200.0, 100.0, 0.0, 25.0) - center - Vec2::Y * 200.0).length()
+                < 0.001
+        );
+        for time in [0.0, 0.1, 3.0, 25.0, 100.0, 1e8] {
+            let position = orbit_position(center, 200.0, 100.0, 0.3, time);
+            assert!(((position - center).length() - 200.0).abs() < 0.001);
+            assert!(
+                (position - orbit_position(center, 200.0, 100.0, 0.3, time + 100.0)).length()
+                    < 0.001
+            );
+        }
+    }
 
     #[test]
     fn black_hole_horizon_detects_swept_and_grazing_crossings() {

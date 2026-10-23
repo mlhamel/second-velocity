@@ -85,10 +85,38 @@ pub struct BlackHoleTag {
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SystemMembership(pub String);
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DockableKind {
+    #[default]
+    Planet,
+    Station,
+}
+
+impl DockableKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Planet => "planet",
+            Self::Station => "station",
+        }
+    }
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DockableTag {
+    pub system: String,
+    pub id: String,
+    pub name: String,
+    pub radius: f32,
+    pub kind: DockableKind,
+}
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DockedAt {
     pub system: String,
-    pub planet: String,
+    #[serde(alias = "planet")]
+    pub location: String,
+    #[serde(default)]
+    pub kind: DockableKind,
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -228,6 +256,12 @@ pub struct RequestLand {
 }
 
 #[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RequestDock {
+    pub system: String,
+    pub location: String,
+}
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RequestLiftOff;
 
 #[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -290,6 +324,7 @@ pub fn register(app: &mut App) {
         .replicate::<ShipInfo>()
         .replicate::<Projectile>()
         .replicate::<PlanetTag>()
+        .replicate::<DockableTag>()
         .replicate::<StarTag>()
         .replicate::<BlackHoleTag>()
         .replicate::<SystemMembership>()
@@ -302,6 +337,7 @@ pub fn register(app: &mut App) {
         .add_client_event::<SetTurn>(Channel::Ordered)
         .add_client_event::<SetFiring>(Channel::Ordered)
         .add_client_event::<RequestLand>(Channel::Ordered)
+        .add_client_event::<RequestDock>(Channel::Ordered)
         .add_client_event::<RequestLiftOff>(Channel::Ordered)
         .add_client_event::<BuyCommodity>(Channel::Ordered)
         .add_client_event::<SellCommodity>(Channel::Ordered)
@@ -328,6 +364,18 @@ mod tests {
 
     #[test]
     fn components_roundtrip() {
+        roundtrip(DockableTag {
+            system: "sol".into(),
+            id: "lin-relay".into(),
+            name: "Lin Relay".into(),
+            radius: 36.0,
+            kind: DockableKind::Station,
+        });
+        roundtrip(DockedAt {
+            system: "sol".into(),
+            location: "lin-relay".into(),
+            kind: DockableKind::Station,
+        });
         roundtrip(Position(Vec2::new(12.5, -3.25)));
         roundtrip(Heading(1.25));
         roundtrip(Hull {
@@ -406,6 +454,10 @@ mod tests {
 
     #[test]
     fn events_roundtrip() {
+        roundtrip(RequestDock {
+            system: "sol".into(),
+            location: "lin-relay".into(),
+        });
         roundtrip(SetThrottle(0.8));
         roundtrip(SetTurn(-1.0));
         roundtrip(SetFiring(true));

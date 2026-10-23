@@ -227,6 +227,15 @@ impl Harness {
         self.client.world_mut().client_trigger(RequestLiftOff);
     }
 
+    pub fn dock(&mut self, system: &str, location: &str) {
+        self.client
+            .world_mut()
+            .client_trigger(evr_protocol::RequestDock {
+                system: system.to_owned(),
+                location: location.to_owned(),
+            });
+    }
+
     pub fn buy(&mut self, commodity: &str, qty: u32) {
         self.client.world_mut().client_trigger(BuyCommodity {
             commodity: commodity.to_owned(),
@@ -287,7 +296,7 @@ impl Harness {
                             info.name.clone(),
                             ship.0.clone(),
                             membership.0.clone(),
-                            docked.map(|d| (d.system.clone(), d.planet.clone())),
+                            docked.cloned(),
                             account.cloned(),
                             encounter.cloned(),
                             quests.cloned(),
@@ -308,15 +317,10 @@ impl Harness {
             let content = self.server.world().resource::<Content>();
             docked
                 .as_ref()
-                .and_then(|(system_id, planet_id)| {
-                    content
-                        .0
-                        .system(system_id)
-                        .and_then(|system| system.planets.iter().find(|p| p.id == *planet_id))
-                })
+                .and_then(|d| content.0.dockable(&d.system, &d.location))
                 .map(|planet| {
                     planet
-                        .commodities
+                        .commodities()
                         .iter()
                         .map(|c| serde_json::json!({ "id": c.id, "price": c.price }))
                         .collect::<Vec<_>>()
@@ -402,6 +406,7 @@ impl Harness {
                 .map(|(tag, position)| {
                     serde_json::json!({
                         "id": tag.id,
+                        "system": tag.system,
                         "name": tag.name,
                         "position": [position.0.x, position.0.y],
                         "radius": tag.radius,
@@ -460,6 +465,23 @@ impl Harness {
                 .collect::<Vec<_>>()
         };
 
+        let stations = {
+            let mut query = self
+                .server
+                .world_mut()
+                .query::<(&evr_protocol::DockableTag, &Position)>();
+            query
+                .iter(self.server.world())
+                .filter(|(port, _)| port.kind == evr_protocol::DockableKind::Station)
+                .map(|(port, position)| {
+                    serde_json::json!({
+                        "id": port.id, "system": port.system, "name": port.name,
+                        "position": [position.0.x, position.0.y], "radius": port.radius,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
         let black_holes = {
             let mut query = self
                 .server
@@ -494,7 +516,10 @@ impl Harness {
             "tick": self.ticks,
             "alive": true,
             "system": system,
-            "docked": docked.map(|(_, planet)| planet),
+            "docked": docked.as_ref().map(|d| &d.location),
+            "docked_location": docked.as_ref().map(|d| serde_json::json!({
+                "system": d.system, "id": d.location, "kind": d.kind.as_str(),
+            })),
             "ship": {
                 "name": ship_name,
                 "position": [ship.position.x, ship.position.y],
@@ -508,6 +533,7 @@ impl Harness {
                 "cargo_capacity": account.cargo_capacity,
             },
             "planets": planets,
+            "stations": stations,
             "ships": ships,
             "meteorites": meteorites,
             "black_holes": black_holes,

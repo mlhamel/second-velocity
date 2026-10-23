@@ -2,8 +2,8 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use evr_protocol::{
-    AccountState, ActiveQuests, ChiefEncounter, DockedAt, Fuel, Hull, Notice, PlanetTag,
-    PlayerDied, Position, QuestTarget, ShipInfo, SystemMembership,
+    AccountState, ActiveQuests, ChiefEncounter, DockableKind, DockableTag, DockedAt, Fuel, Hull,
+    Notice, PlayerDied, Position, QuestTarget, ShipInfo, SystemMembership,
 };
 use evr_server::gameplay::LAND_RANGE;
 
@@ -175,7 +175,7 @@ fn spawn_hud(mut commands: Commands) {
         .with_children(|parent| {
             spawn_text(
                 parent,
-                "W thrust   A/D turn   Space fire   L land   U lift   H hail   J warp   T chief",
+                "W thrust   A/D turn   Space fire   L land/dock   U undock   H hail   J warp   T host",
                 13.0,
                 DIM,
             );
@@ -244,7 +244,7 @@ fn update_hud(
     board: Res<Noticeboard>,
     content: Res<ClientContent>,
     ships: HudShips,
-    planets: Query<(&PlanetTag, &Position)>,
+    planets: Query<(&DockableTag, &Position)>,
 ) {
     let my = ships
         .iter()
@@ -338,13 +338,10 @@ fn update_hud(
     let mut prompts = Vec::new();
     let mut trade = String::new();
     if let Some(docked_at) = docked {
-        trade.push_str(&format!("docked at {}\n", docked_at.planet));
-        let planet = content
-            .0
-            .system(&docked_at.system)
-            .and_then(|system| system.planets.iter().find(|p| p.id == docked_at.planet));
+        trade.push_str(&format!("docked at {}\n", docked_at.location));
+        let planet = content.0.dockable(&docked_at.system, &docked_at.location);
         if let Some(planet) = planet {
-            for (index, commodity) in planet.commodities.iter().enumerate() {
+            for (index, commodity) in planet.commodities().iter().enumerate() {
                 let held = account
                     .cargo
                     .iter()
@@ -362,20 +359,34 @@ fn update_hud(
                 ));
             }
         }
-        prompts.push("U — lift off".to_owned());
+        prompts.push("U — undock".to_owned());
         if encounter.is_some() {
-            prompts.push("T — chief".to_owned());
+            prompts.push(
+                if docked_at.kind == DockableKind::Station {
+                    "T — master"
+                } else {
+                    "T — chief"
+                }
+                .to_owned(),
+            );
         }
     } else {
         let candidate = planets
             .iter()
-            .filter(|(tag, _)| tag.system == membership.0)
             .filter(|(tag, planet_position)| {
                 position.0.distance(planet_position.0) <= LAND_RANGE + tag.radius
             })
             .min_by_key(|(_, planet_position)| position.0.distance(planet_position.0).to_bits());
         if let Some((planet, _)) = candidate {
-            prompts.push(format!("L — land on {}", planet.name));
+            prompts.push(format!(
+                "L — {} {}",
+                if planet.kind == DockableKind::Station {
+                    "dock at"
+                } else {
+                    "land on"
+                },
+                planet.name
+            ));
         }
         prompts.push("J — warp drive".to_owned());
     }

@@ -1,0 +1,22 @@
+(
+    id: "station-delivery-loop",
+    name: "Orbital Station to Deep-space Freeport Contract",
+    description: "Accept a station master's contract in orbit and deliver it to a fixed station outside system membership zones.",
+    encounter_seed: Some(0),
+    max_ticks: 2500,
+    steps: [
+        FlyToStation(system: "sol", station: "lin-relay", dock: true),
+        AssertEncounter(mood: Some("quest")),
+        Respond(choice: "accept_quest"),
+        AssertActiveQuests(count: 1),
+        LiftOff,
+        FlyToStation(system: "sol", station: "wayfarer-exchange", dock: true),
+        AssertDocked(Some("wayfarer-exchange")),
+        AssertSystem("sol"),
+        AssertEncounter(mood: Some("turn_in")),
+        Respond(choice: "turn_in"),
+        AssertCompletedQuest("relay-calibration-seals"),
+        AssertCredits(min: Some(700)),
+        AssertActiveQuests(count: 0),
+    ],
+)

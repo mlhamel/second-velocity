@@ -1,5 +1,9 @@
 use serde::Deserialize;
 
+pub const PLANET_RADIUS: f32 = 90.0;
+pub const PLANET_OFFSET_X: f32 = 500.0;
+pub const PLANET_SPACING: f32 = 600.0;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct SystemDef {
     pub id: String,
@@ -9,6 +13,8 @@ pub struct SystemDef {
     pub position: (f32, f32),
     pub links: Vec<String>,
     pub planets: Vec<PlanetDef>,
+    #[serde(default)]
+    pub stations: Vec<StationDef>,
     #[serde(default)]
     pub star: Option<StarDef>,
     #[serde(default)]
@@ -33,6 +39,86 @@ pub struct StarDef {
     pub radius: f32,
     #[serde(default)]
     pub sprite: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StationDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub radius: f32,
+    pub placement: StationPlacement,
+    #[serde(default)]
+    pub sprite: Option<String>,
+    #[serde(default)]
+    pub master: Option<ChiefDef>,
+    #[serde(default)]
+    pub commodities: Vec<CommodityPrice>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub enum StationPlacement {
+    Fixed {
+        position: (f32, f32),
+    },
+    Orbit {
+        planet: String,
+        radius: f32,
+        period_secs: f32,
+        #[serde(default)]
+        phase: f32,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub enum DockableDef<'a> {
+    Planet(&'a PlanetDef),
+    Station(&'a StationDef),
+}
+
+impl<'a> DockableDef<'a> {
+    pub fn name(self) -> &'a str {
+        match self {
+            Self::Planet(p) => &p.name,
+            Self::Station(s) => &s.name,
+        }
+    }
+    pub fn commodities(self) -> &'a [CommodityPrice] {
+        match self {
+            Self::Planet(p) => &p.commodities,
+            Self::Station(s) => &s.commodities,
+        }
+    }
+    pub fn host(self) -> Option<&'a ChiefDef> {
+        match self {
+            Self::Planet(p) => p.chief.as_ref(),
+            Self::Station(s) => s.master.as_ref(),
+        }
+    }
+}
+
+impl SystemDef {
+    pub fn dockable(&self, id: &str) -> Option<DockableDef<'_>> {
+        self.planets
+            .iter()
+            .find(|p| p.id == id)
+            .map(DockableDef::Planet)
+            .or_else(|| {
+                self.stations
+                    .iter()
+                    .find(|s| s.id == id)
+                    .map(DockableDef::Station)
+            })
+    }
+
+    pub fn planet_position(&self, id: &str) -> Option<(f32, f32)> {
+        self.planets.iter().position(|p| p.id == id).map(|index| {
+            (
+                self.position.0 + PLANET_OFFSET_X + index as f32 * PLANET_SPACING,
+                self.position.1,
+            )
+        })
+    }
 }
 
 fn default_field_radius() -> f32 {

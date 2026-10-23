@@ -9,7 +9,7 @@ use crate::outfit::OutfitDef;
 use crate::quest::{QuestDef, QuestKind};
 use crate::scenario::{ScenarioDef, ScenarioStep};
 use crate::ship::ShipDef;
-use crate::system::SystemDef;
+use crate::system::{DockableDef, PLANET_RADIUS, StationPlacement, SystemDef};
 
 #[derive(Debug)]
 pub struct ContentPack {
@@ -95,6 +95,18 @@ impl ContentPack {
             {
                 validate_asset(&assets_root, sprite)?;
             }
+            for station in &system.stations {
+                if let Some(sprite) = &station.sprite {
+                    validate_asset(&assets_root, sprite)?;
+                }
+                if let Some(portrait) = station
+                    .master
+                    .as_ref()
+                    .and_then(|host| host.portrait.as_ref())
+                {
+                    validate_asset(&assets_root, portrait)?;
+                }
+            }
         }
         Ok(())
     }
@@ -105,6 +117,10 @@ impl ContentPack {
 
     pub fn system(&self, id: &str) -> Option<&SystemDef> {
         self.systems.iter().find(|system| system.id == id)
+    }
+
+    pub fn dockable(&self, system: &str, location: &str) -> Option<DockableDef<'_>> {
+        self.system(system)?.dockable(location)
     }
 
     pub fn outfit(&self, id: &str) -> Option<&OutfitDef> {
@@ -146,6 +162,61 @@ impl ContentPack {
         let system_ids: std::collections::HashSet<_> =
             systems.iter().map(|s| s.id.clone()).collect();
         for system in systems {
+            validate_ids(
+                "docking location",
+                system
+                    .planets
+                    .iter()
+                    .map(|p| p.id.clone())
+                    .chain(system.stations.iter().map(|s| s.id.clone())),
+            )?;
+            for station in &system.stations {
+                let valid = station.radius.is_finite()
+                    && station.radius > 0.0
+                    && match &station.placement {
+                        StationPlacement::Fixed { position } => {
+                            position.0.is_finite()
+                                && position.1.is_finite()
+                                && (system.position.0 + position.0).is_finite()
+                                && (system.position.1 + position.1).is_finite()
+                                && [
+                                    system.position.0 + position.0,
+                                    system.position.1 + position.1,
+                                ]
+                                .into_iter()
+                                .all(|axis| {
+                                    f64::from(axis).abs() + f64::from(station.radius) + 64.0
+                                        <= f64::from(f32::MAX)
+                                })
+                        }
+                        StationPlacement::Orbit {
+                            planet,
+                            radius,
+                            period_secs,
+                            phase,
+                        } => {
+                            system.planet_position(planet).is_some_and(|center| {
+                                [center.0, center.1].into_iter().all(|axis| {
+                                    axis.is_finite()
+                                        && (f64::from(axis).abs()
+                                            + f64::from(*radius)
+                                            + f64::from(station.radius))
+                                            <= f64::from(f32::MAX)
+                                })
+                            }) && radius.is_finite()
+                                && *radius > PLANET_RADIUS + station.radius + 20.0
+                                && period_secs.is_finite()
+                                && *period_secs > 0.0
+                                && phase.is_finite()
+                        }
+                    };
+                if !valid {
+                    return Err(ContentError::UnknownReference {
+                        kind: "station config",
+                        id: format!("{}/{}", system.id, station.id),
+                    });
+                }
+            }
             if let Some(field) = &system.meteorites
                 && field.count > 0
                 && (field.radius <= 0.0
@@ -207,14 +278,35 @@ impl ContentPack {
             .collect();
         let quest_ids: std::collections::HashSet<String> =
             quests.iter().map(|q| q.id.clone()).collect();
+        let station_refs: std::collections::HashSet<String> = systems
+            .iter()
+            .flat_map(|s| {
+                s.stations
+                    .iter()
+                    .map(move |station| format!("{}/{}", s.id, station.id))
+            })
+            .collect();
+        let dockable_refs: std::collections::HashSet<String> =
+            planet_refs.union(&station_refs).cloned().collect();
+        let dockable_ids: std::collections::HashSet<String> = planet_ids
+            .iter()
+            .cloned()
+            .chain(
+                systems
+                    .iter()
+                    .flat_map(|s| s.stations.iter().map(|station| station.id.clone())),
+            )
+            .collect();
 
         for quest in quests {
             let giver_ref = format!("{}/{}", quest.giver.0, quest.giver.1);
-            validate_reference("quest giver planet", &giver_ref, &planet_refs)?;
+            validate_reference("quest giver planet", &giver_ref, &dockable_refs)?;
+            validate_station_quest_host(systems, &quest.giver)?;
             match &quest.kind {
                 QuestKind::Delivery { destination, .. } => {
                     let dest_ref = format!("{}/{}", destination.0, destination.1);
-                    validate_reference("quest destination planet", &dest_ref, &planet_refs)?;
+                    validate_reference("quest destination planet", &dest_ref, &dockable_refs)?;
+                    validate_station_quest_host(systems, destination)?;
                 }
                 QuestKind::Bounty { system, .. } => {
                     validate_reference("quest target system", system, &system_ids)?;
@@ -225,6 +317,22 @@ impl ContentPack {
         for scenario in scenarios {
             for step in &scenario.steps {
                 match step {
+                    ScenarioStep::FlyToStation {
+                        system, station, ..
+                    } => {
+                        validate_reference(
+                            "scenario station",
+                            &format!("{system}/{station}"),
+                            &station_refs,
+                        )?;
+                    }
+                    ScenarioStep::Dock { system, location } => {
+                        validate_reference(
+                            "scenario dock target",
+                            &format!("{system}/{location}"),
+                            &dockable_refs,
+                        )?;
+                    }
                     ScenarioStep::FlyToPlanet { system, planet, .. } => {
                         let target_ref = format!("{system}/{planet}");
                         validate_reference("scenario target planet", &target_ref, &planet_refs)?;
@@ -262,7 +370,7 @@ impl ContentPack {
                         }
                     }
                     ScenarioStep::AssertDocked(Some(planet)) => {
-                        validate_reference("scenario docked planet", planet, &planet_ids)?;
+                        validate_reference("scenario docked planet", planet, &dockable_ids)?;
                     }
                     ScenarioStep::AssertCompletedQuest(quest_id) => {
                         validate_reference("scenario quest", quest_id, &quest_ids)?;
@@ -274,6 +382,24 @@ impl ContentPack {
 
         Ok(())
     }
+}
+
+fn validate_station_quest_host(
+    systems: &[SystemDef],
+    target: &(String, String),
+) -> Result<(), ContentError> {
+    if systems
+        .iter()
+        .find(|s| s.id == target.0)
+        .and_then(|s| s.stations.iter().find(|station| station.id == target.1))
+        .is_some_and(|station| station.master.is_none())
+    {
+        return Err(ContentError::UnknownReference {
+            kind: "quest station master",
+            id: format!("{}/{}", target.0, target.1),
+        });
+    }
+    Ok(())
 }
 
 fn parse_ron<T: DeserializeOwned>(path: &PathBuf) -> Result<T, ContentError> {
