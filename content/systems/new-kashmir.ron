@@ -4,12 +4,20 @@
     government: "independent",
     description: "Saffron fields under alien suns. The spice must flow.",
     position: (-400.0, -2800.0),
-    links: ["sirius", "tarsis", "ross-154"],
+    links: ["sirius", "tarsis", "ross-154", "hawking"],
     planets: [
         (
             id: "kashmir-fields",
             name: "The Fields",
             description: "Terraced valleys of imported saffron. A planet that smells like money.",
+            chief: Some((
+                name: "Steward Yume",
+                portrait: Some("textures/chiefs/kashmir-fields.png"),
+                greeting: "The Fields Cooperative welcomes you. Your landing was logged, your dust was logged, and your dust exceeds our seasonal allowance. Shall we begin?",
+                offer_text: "The northern terrace overproduced again. The cooperative votes to sell before the price committee notices we have a price committee. Fill your hold, feed the galaxy.",
+                tribute_text: "Cooperative dues, irrigation levy, and the visitors' soil-decontamination fee. It sounds like a lot, but your boots brought in six new species today.",
+                quest_text: "The stewardship keeps a needs-list pinned to the granary door: medicine runs, seed couriers, the occasional discreet errand past the saffron barons. Pay is fair; gratitude is extra.",
+            )),
             commodities: [
                 (id: "food", price: 4),
                 (id: "luxury", price: 70),

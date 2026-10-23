@@ -4,7 +4,7 @@
     government: "pirate",
     description: "A dim red star hiding a bright black market.",
     position: (800.0, -3200.0),
-    links: ["new-kashmir", "tarsis"],
+    links: ["new-kashmir", "tarsis", "cygnus-x1"],
     planets: [
         (
             id: "ross-market",

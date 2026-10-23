@@ -1,0 +1,42 @@
+(
+    id: "cygnus-x1",
+    name: "Cygnus X-1",
+    government: "independent",
+    description: "A company mining belt at the edge of the charts. The drill crews measure wealth in ore and lifespans in shift rotations, and the union hall outranks the law.",
+    position: (2800.0, -3200.0),
+    links: ["tarsis", "ross-154"],
+    star: Some((
+        position: (1550.0, -600.0),
+        radius: 220.0,
+        sprite: Some("textures/stars/corona.png"),
+    )),
+    planets: [
+        (
+            id: "kestrel-drift",
+            name: "Kestrel's Drift",
+            description: "A bolted-together smelter station that trails slag like a comet. Half the population works the drift mines; the other half sells them air.",
+            sprite: Some("textures/planets/kestrel-drift.png"),
+            chief: Some((
+                name: "Shift Boss Odara",
+                portrait: Some("textures/chiefs/kestrel-drift.png"),
+                greeting: "Kestrel's Drift, third shift. If you're selling, berth four. If you're buying, everyone is. If you're from the insurance office, we're closed.",
+                offer_text: "The south vein cut loose something rich and the assay office can't log what it can't weigh. Haul a load at scrap rate before the auditors learn arithmetic.",
+                tribute_text: "Docking levy, slag-handling fee, and the visitors' air surcharge. The union votes it fair. The union is me, and I vote loud.",
+                quest_text: "The union keeps a board for ugly jobs with decent pay. Most of them involve the words 'last known position'. Take a card.",
+            )),
+            commodities: [
+                (id: "ore", price: 12),
+                (id: "machinery", price: 58),
+                (id: "medicine", price: 55),
+                (id: "food", price: 11),
+            ],
+        ),
+    ],
+    meteorites: Some((
+        count: 10,
+        radius: 1200.0,
+        stationary_weight: 4,
+        slow_weight: 4,
+        fast_weight: 2,
+    )),
+)

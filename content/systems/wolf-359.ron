@@ -4,7 +4,7 @@
     government: "pirate",
     description: "The sort of place where the docking clamps have a surcharge.",
     position: (-2400.0, -400.0),
-    links: ["vega", "sirius", "sol", "polaris"],
+    links: ["vega", "sirius", "sol", "polaris", "trappist"],
     planets: [
         (
             id: "wolf-hideout",
@@ -14,6 +14,7 @@
                 (id: "machinery", price: 22),
                 (id: "weapons", price: 45),
                 (id: "medicine", price: 80),
+                (id: "isotopes", price: 90),
             ],
         ),
     ],

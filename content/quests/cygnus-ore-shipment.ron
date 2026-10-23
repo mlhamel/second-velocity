@@ -1,0 +1,12 @@
+(
+    id: "cygnus-ore-shipment",
+    name: "First-Assay Ore to Earth",
+    giver: ("cygnus-x1", "kestrel-drift"),
+    kind: Delivery(
+        commodity: "ore",
+        qty: 5,
+        destination: ("sol", "earth"),
+    ),
+    reward_credits: 750,
+    description: "First-assay ore from the new south vein, sealed and manifested as 'aggregate'. Confederation metallurgists pay premiums for unlogged aggregate, and Port Director Lin pays less but faster.",
+)

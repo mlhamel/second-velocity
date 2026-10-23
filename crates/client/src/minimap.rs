@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_protocol::{Heading, PlanetTag, Position, ShipInfo, ShipKind, SystemMembership};
+use evr_protocol::{Heading, PlanetTag, Position, ShipInfo, ShipKind, StarTag, SystemMembership};
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;
@@ -119,9 +119,16 @@ fn spawn_minimap(mut commands: Commands) {
         });
 }
 
-fn dot_color(planet: Option<&PlanetTag>, ship_info: Option<&ShipInfo>, my_id: u64) -> Color {
+fn dot_color(
+    planet: Option<&PlanetTag>,
+    star: Option<&StarTag>,
+    ship_info: Option<&ShipInfo>,
+    my_id: u64,
+) -> Color {
     if planet.is_some() {
         Color::srgb(0.35, 0.65, 1.0)
+    } else if star.is_some() {
+        Color::srgb(1.0, 0.6, 0.15)
     } else if let Some(info) = ship_info {
         match info.kind {
             ShipKind::Pirate => Color::srgb(1.0, 0.3, 0.2),
@@ -148,6 +155,7 @@ type MinimapEntities<'w, 's> = Query<
     (
         &'static Position,
         Option<&'static PlanetTag>,
+        Option<&'static StarTag>,
         Option<&'static ShipInfo>,
     ),
     With<Remote>,
@@ -180,7 +188,7 @@ fn update_minimap(
 
     let mut assignments: Vec<(f32, f32, Color)> = Vec::with_capacity(DOT_COUNT);
 
-    for (pos, planet, ship_info) in &entities {
+    for (pos, planet, star, ship_info) in &entities {
         if let Some(info) = ship_info
             && info.owner == Some(my_id.0)
         {
@@ -195,7 +203,7 @@ fn update_minimap(
         let mx = half + rel.x * scale - DOT_SIZE / 2.0;
         let my = half - rel.y * scale - DOT_SIZE / 2.0;
 
-        assignments.push((mx, my, dot_color(planet, ship_info, my_id.0)));
+        assignments.push((mx, my, dot_color(planet, star, ship_info, my_id.0)));
     }
 
     let mut i = 0;

@@ -1,0 +1,12 @@
+(
+    id: "greenreach-textiles",
+    name: "Frost-Season Cloth to Sirius",
+    giver: ("lalande", "greenreach"),
+    kind: Delivery(
+        commodity: "textiles",
+        qty: 6,
+        destination: ("sirius", "sirius-prime"),
+    ),
+    reward_credits: 550,
+    description: "Six bolts of frost-season cloth, first-cut and unsold. The Sirius boutiques will rebrand it, triple the price, and never once spell Greenreach correctly. That part's tradition.",
+)

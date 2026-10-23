@@ -22,6 +22,7 @@
             commodities: [
                 (id: "food", price: 14),
                 (id: "machinery", price: 30),
+                (id: "ore", price: 15),
                 (id: "medicine", price: 70),
             ],
         ),

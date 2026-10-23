@@ -237,6 +237,67 @@ fn execute_step(
                 hull_damage_taken,
             )
         }
+        ScenarioStep::FlyToStar { system, approach } => {
+            let (star_pos, star_radius) = star_world_pos(harness, system)
+                .ok_or_else(|| format!("star for system {system} not found in server world"))?;
+            let state = harness.observe();
+            let pos_arr = state["ship"]["position"]
+                .as_array()
+                .ok_or_else(|| "missing ship.position".to_owned())?;
+            let ship_pos = [
+                pos_arr[0].as_f64().unwrap_or(0.0),
+                pos_arr[1].as_f64().unwrap_or(0.0),
+            ];
+            let dx = ship_pos[0] - star_pos[0];
+            let dy = ship_pos[1] - star_pos[1];
+            let (dx, dy) = if dx.abs() < f64::EPSILON && dy.abs() < f64::EPSILON {
+                (1.0, 0.0)
+            } else {
+                (dx, dy)
+            };
+            let dir_len = (dx.hypot(dy)).max(1.0);
+            let standoff = f64::from(star_radius * approach);
+            let target = [
+                star_pos[0] + dx / dir_len * standoff,
+                star_pos[1] + dy / dir_len * standoff,
+            ];
+            // Stop the free flight short of the corona, then pin the ship at the
+            // exact standoff: coasting or a jumped stop window at warp speed can
+            // otherwise carry it into the lethal core between runner checks.
+            fly_to_point(
+                harness,
+                target,
+                150.0,
+                remaining_budget,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            )?;
+            let pin = bevy::math::Vec2::new(target[0] as f32, target[1] as f32);
+            {
+                let mut q = harness
+                    .server
+                    .world_mut()
+                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                let world = harness.server.world_mut();
+                for (info, mut ship) in q.iter_mut(world) {
+                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                        ship.0.position = pin;
+                        ship.0.velocity = bevy::math::Vec2::ZERO;
+                    }
+                }
+            }
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
         ScenarioStep::Land { planet } => {
             harness.land(planet);
             advance_tracking(
@@ -307,6 +368,23 @@ fn execute_step(
             let actual = state["system"].as_str().unwrap_or("");
             if actual != expected {
                 return Err(format!("expected system='{expected}', got '{actual}'"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertHull { min, max } => {
+            let state = harness.observe();
+            let actual = (state["ship"]["shields"].as_f64().unwrap_or(0.0)
+                + state["ship"]["armor"].as_f64().unwrap_or(0.0)) as f32;
+            if let Some(min_val) = min
+                && actual < *min_val
+            {
+                return Err(format!("expected hull >= {min_val}, got {actual:.1}"));
+            }
+            if let Some(max_val) = max
+                && actual > *max_val
+            {
+                return Err(format!("expected hull <= {max_val}, got {actual:.1}"));
             }
             *assertions_passed += 1;
             Ok(())
@@ -709,6 +787,30 @@ fn execute_step(
             harness.set_flight(0.0, 0.0, true);
             let mut retaliated = false;
             for _ in 0..remaining_budget.min(200) {
+                let npc_current = harness
+                    .server
+                    .world()
+                    .get::<Position>(npc_entity)
+                    .map(|p| p.0);
+                if let Some(npc_current) = npc_current {
+                    let state = harness.observe();
+                    let pos_arr = state["ship"]["position"]
+                        .as_array()
+                        .ok_or("missing ship.position")?;
+                    let player_pos = bevy::math::Vec2::new(
+                        pos_arr[0].as_f64().unwrap_or(0.0) as f32,
+                        pos_arr[1].as_f64().unwrap_or(0.0) as f32,
+                    );
+                    let heading = state["ship"]["heading"].as_f64().unwrap_or(0.0) as f32;
+                    let delta = npc_current - player_pos;
+                    let desired = delta.y.atan2(delta.x);
+                    let diff = (desired - heading + std::f32::consts::PI)
+                        .rem_euclid(2.0 * std::f32::consts::PI)
+                        - std::f32::consts::PI;
+                    let turn = diff.signum();
+                    let throttle = if diff.abs() < 0.6 { 0.3 } else { 0.1 };
+                    harness.set_flight(throttle, turn, true);
+                }
                 advance_tracking(
                     harness,
                     1,
@@ -797,6 +899,18 @@ fn system_world_pos(harness: &Harness, system_id: &str) -> Option<[f64; 2]> {
         .0
         .system(system_id)
         .map(|s| [f64::from(s.position.0), f64::from(s.position.1)])
+}
+
+fn star_world_pos(harness: &mut Harness, system_id: &str) -> Option<([f64; 2], f32)> {
+    let mut query = harness
+        .server
+        .world_mut()
+        .query::<(&evr_protocol::StarTag, &Position)>();
+    let world = harness.server.world();
+    query
+        .iter(world)
+        .find(|(star, _)| star.system == system_id)
+        .map(|(star, pos)| ([f64::from(pos.0.x), f64::from(pos.0.y)], star.radius))
 }
 
 #[allow(clippy::too_many_arguments)]

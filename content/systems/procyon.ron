@@ -4,7 +4,7 @@
     government: "confederation",
     description: "Bright, orderly, and aggressively boring. The border of civilized space.",
     position: (3600.0, 1200.0),
-    links: ["barnard", "alpha-centauri"],
+    links: ["barnard", "alpha-centauri", "trappist"],
     planets: [
         (
             id: "procyon-relay",
@@ -14,6 +14,7 @@
                 (id: "food", price: 12),
                 (id: "machinery", price: 48),
                 (id: "medicine", price: 50),
+                (id: "isotopes", price: 78),
                 (id: "luxury", price: 120),
             ],
         ),

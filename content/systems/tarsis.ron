@@ -4,16 +4,26 @@
     government: "pirate",
     description: "A haven for people whose ships have more guns than cargo holds.",
     position: (1600.0, -2200.0),
-    links: ["polaris", "alpha-centauri", "new-kashmir", "ross-154"],
+    links: ["polaris", "alpha-centauri", "new-kashmir", "ross-154", "cygnus-x1"],
     planets: [
         (
             id: "tarsis-port",
             name: "Freeport Tarsis",
             description: "The only rule is the docking fee. Everything else is negotiation.",
+            chief: Some((
+                name: "Harbormaster Sixto",
+                portrait: Some("textures/chiefs/tarsis-port.png"),
+                greeting: "Welcome to Freeport, traveler. The docking fee is the law; everything else is conversation. Would you prefer the pleasant conversation, or the efficient one?",
+                offer_text: "A consortium partner over-ordered and would rather sell quietly than explain loudly. The tariff is fair and the questions are few. Both suit me. Both should suit you.",
+                tribute_text: "The harbormaster's discretionary assessment. It is discretionary in amount, not in payment. I accept credits, cargo, or the absence of incident.",
+                quest_text: "The harbor board lists contracts no respectable port would touch. Fortunately, respectability was never our product. Choose something suited to your hull size.",
+            )),
             commodities: [
                 (id: "weapons", price: 35),
                 (id: "machinery", price: 25),
+                (id: "ore", price: 38),
                 (id: "luxury", price: 100),
+                (id: "textiles", price: 28),
                 (id: "food", price: 18),
             ],
         ),

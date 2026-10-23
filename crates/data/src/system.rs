@@ -10,7 +10,17 @@ pub struct SystemDef {
     pub links: Vec<String>,
     pub planets: Vec<PlanetDef>,
     #[serde(default)]
+    pub star: Option<StarDef>,
+    #[serde(default)]
     pub meteorites: Option<MeteoriteFieldDef>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct StarDef {
+    pub position: (f32, f32),
+    pub radius: f32,
+    #[serde(default)]
+    pub sprite: Option<String>,
 }
 
 fn default_field_radius() -> f32 {

@@ -69,14 +69,14 @@ def fill_circle(buffer, cx, cy, radius, color, falloff=1.0):
                 blend(buffer, x, y, color, min(1.0, max(0.0, alpha)))
 
 
-def ship(buffer):
+def ship(buffer, hull_color=SHIP_COLOR):
     hull = [(0.96, 0.50), (0.52, 0.36), (0.14, 0.40), (0.14, 0.60), (0.52, 0.64)]
     wing_top = [(0.55, 0.37), (0.22, 0.06), (0.10, 0.10), (0.30, 0.42)]
     wing_bottom = [(0.55, 0.63), (0.22, 0.94), (0.10, 0.90), (0.30, 0.58)]
     engine = [(0.06, 0.44), (0.14, 0.44), (0.14, 0.56), (0.06, 0.56)]
-    fill_polygon(buffer, wing_top, SHIP_COLOR)
-    fill_polygon(buffer, wing_bottom, SHIP_COLOR)
-    fill_polygon(buffer, hull, SHIP_COLOR)
+    fill_polygon(buffer, wing_top, hull_color)
+    fill_polygon(buffer, wing_bottom, hull_color)
+    fill_polygon(buffer, hull, hull_color)
     fill_polygon(buffer, engine, ENGINE_COLOR)
     fill_circle(buffer, SIZE * 0.62, SIZE * 0.5, SIZE * 0.055, COCKPIT_COLOR, 0)
 
@@ -95,6 +95,21 @@ def planet(buffer, base):
                 alpha = 1.0 - (distance - radius) / (radius * 0.12)
                 color = (base[0], base[1], base[2], 255)
                 blend(buffer, x, y, color, alpha * 0.35)
+
+
+def star(buffer):
+    cx = cy = SIZE / 2
+    disc = SIZE * 0.30
+    corona = SIZE * 0.48
+    fill_circle(buffer, cx, cy, corona, (255, 120, 40, 255), 3.0)
+    fill_circle(buffer, cx, cy, corona * 0.8, (255, 160, 60, 255), 2.6)
+    fill_circle(buffer, cx, cy, corona * 0.62, (255, 200, 110, 255), 2.2)
+    fill_circle(buffer, cx, cy, disc, (255, 244, 214, 255), 0)
+    for y in range(SIZE):
+        for x in range(SIZE):
+            distance = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+            if disc * 0.82 <= distance <= disc:
+                blend(buffer, x, y, (250, 190, 120, 255), 0.55)
 
 
 def chief(buffer, coat_color, accent_color):
@@ -140,17 +155,47 @@ def main():
     for ship_name in ("shuttle.png", "turncoat.png", "patrol.png"):
         write_if_missing(os.path.join(root, "ships", ship_name), SIZE, SIZE, bytes(ship_pixels), force)
 
+    for ship_name, hull_color in [
+        ("terran-courier.png", (200, 210, 225, 255)),
+        ("terran-frigate.png", (150, 165, 190, 255)),
+        ("vellari-sprinter.png", (240, 225, 180, 255)),
+        ("korath-cutter.png", (140, 120, 115, 255)),
+        ("korath-reaver.png", (120, 100, 100, 255)),
+        ("sylph-skiff.png", (170, 220, 205, 255)),
+        ("sylph-dreamweaver.png", (140, 200, 180, 255)),
+        ("auroran-titan.png", (200, 130, 70, 255)),
+    ]:
+        tinted = [0] * (SIZE * SIZE * 4)
+        ship(tinted, hull_color)
+        write_if_missing(os.path.join(root, "ships", ship_name), SIZE, SIZE, bytes(tinted), force)
+
     for name, base in [
         ("earth.png", (46, 96, 168)),
         ("newhaven.png", (150, 118, 88)),
+        ("kestrel-drift.png", (128, 108, 82)),
+        ("greenreach.png", (92, 140, 78)),
+        ("deepwatch.png", (96, 90, 130)),
+        ("hawking-stand.png", (110, 105, 120)),
     ]:
         planet_pixels = [0] * (SIZE * SIZE * 4)
         planet(planet_pixels, base)
         write_if_missing(os.path.join(root, "planets", name), SIZE, SIZE, bytes(planet_pixels), force)
 
+    star_pixels = [0] * (SIZE * SIZE * 4)
+    star(star_pixels)
+    write_if_missing(os.path.join(root, "stars", "corona.png"), SIZE, SIZE, bytes(star_pixels), force)
+
     for name, coat, accent in [
         ("earth.png", (48, 88, 150), (210, 175, 75)),
         ("newhaven.png", (128, 92, 62), (90, 190, 175)),
+        ("kestrel-drift.png", (110, 78, 52), (230, 150, 60)),
+        ("greenreach.png", (74, 118, 66), (200, 180, 90)),
+        ("deepwatch.png", (58, 56, 96), (120, 190, 220)),
+        ("hawking-stand.png", (90, 88, 96), (220, 120, 110)),
+        ("sirius-prime.png", (70, 60, 92), (230, 200, 90)),
+        ("vega-station.png", (70, 90, 110), (90, 200, 140)),
+        ("tarsis-port.png", (100, 80, 70), (180, 90, 160)),
+        ("kashmir-fields.png", (120, 100, 60), (230, 140, 90)),
     ]:
         chief_pixels = [0] * (SIZE * SIZE * 4)
         chief(chief_pixels, coat, accent)

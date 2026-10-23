@@ -1,0 +1,30 @@
+(
+    id: "trappist",
+    name: "Trappist Deeps",
+    government: "independent",
+    description: "A research archipelago hanging past the shipping lanes. The observatories watch something in the deep black that nobody will name on the record, and the pub closes when the gravity meter twitches.",
+    position: (-3400.0, 1000.0),
+    links: ["wolf-359", "procyon"],
+    planets: [
+        (
+            id: "deepwatch",
+            name: "Deepwatch",
+            description: "A stack of listening dishes and pressure labs bolted to a captured moonlet. The faculty produces brilliant papers and worse coffee, in that order of importance.",
+            sprite: Some("textures/planets/deepwatch.png"),
+            chief: Some((
+                name: "Provost Marlow",
+                portrait: Some("textures/chiefs/deepwatch.png"),
+                greeting: "Deepwatch requisitions. State your business in triplicate, or at least loudly. The paperwork office is closed. It is always closed.",
+                offer_text: "The isotope annex produced surplus stock beyond my storage budget. Normally I'd burn the surplus. Consider that sentence an invitation.",
+                tribute_text: "Instrumentation calibration fee, and the archive access surcharge. Both are scientifically necessary. The archive is a broom closet, but the fee stands.",
+                quest_text: "My staff posts field contracts on the requisitions board. Fieldwork means the fields are three systems out and occasionally on fire. Payment is prompt; survival is not guaranteed.",
+            )),
+            commodities: [
+                (id: "isotopes", price: 55),
+                (id: "machinery", price: 50),
+                (id: "medicine", price: 68),
+                (id: "food", price: 9),
+            ],
+        ),
+    ],
+)

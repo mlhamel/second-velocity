@@ -7,6 +7,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 pub struct Textures {
     pub ship: Handle<Image>,
     pub planet: Handle<Image>,
+    pub star: Handle<Image>,
     pub glow: Handle<Image>,
     pub chief: Handle<Image>,
     pub meteorites: [Handle<Image>; 3],
@@ -19,6 +20,7 @@ pub(crate) fn create_textures(
 ) {
     let ship = images.add(ship_image(96));
     let planet = images.add(planet_image(128));
+    let star = images.add(star_image(128));
     let glow = images.add(glow_image(64));
     let chief = images.add(chief_image(128));
     let meteorites = [
@@ -41,6 +43,7 @@ pub(crate) fn create_textures(
     commands.insert_resource(Textures {
         ship,
         planet,
+        star,
         glow,
         chief,
         meteorites,
@@ -195,6 +198,37 @@ fn planet_image(size: u32) -> Image {
                 data[index + 1] = 255;
                 data[index + 2] = 255;
                 data[index + 3] = alpha;
+            }
+        }
+    }
+    image_from_rgba(size, data)
+}
+
+fn star_image(size: u32) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    let disc = s * 0.30;
+    let corona = s * 0.48;
+    let center = s / 2.0;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - center;
+            let dy = y as f32 + 0.5 - center;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let index = ((y * size + x) * 4) as usize;
+            if distance <= disc {
+                let rim = (distance / disc).powi(3);
+                let value = (1.0 - rim * 0.25) * 255.0;
+                data[index] = value as u8;
+                data[index + 1] = (value * 0.955) as u8;
+                data[index + 2] = (value * 0.84) as u8;
+                data[index + 3] = 255;
+            } else if distance <= corona {
+                let falloff = (1.0 - (distance - disc) / (corona - disc)).powi(3);
+                data[index] = 255;
+                data[index + 1] = (110.0 + 90.0 * falloff) as u8;
+                data[index + 2] = (40.0 + 60.0 * falloff) as u8;
+                data[index + 3] = (falloff * 0.85 * 255.0) as u8;
             }
         }
     }

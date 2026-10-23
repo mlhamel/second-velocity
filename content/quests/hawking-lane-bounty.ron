@@ -1,0 +1,11 @@
+(
+    id: "hawking-lane-bounty",
+    name: "Raiders on the Ore Lane",
+    giver: ("hawking", "hawking-stand"),
+    kind: Bounty(
+        system: "alpha-centauri",
+        target: "turncoat",
+    ),
+    reward_credits: 620,
+    description: "Salvage claims out of the Stand keep getting 'collected' by a Turncoat crew working the Centauri ore lane. The insurance board calls it force majeure. I call it a bounty. Bring me a debris field.",
+)

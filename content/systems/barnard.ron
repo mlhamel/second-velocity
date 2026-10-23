@@ -4,7 +4,7 @@
     government: "confederation",
     description: "A red dwarf with a navy dockyard and opinions about your manifest.",
     position: (2600.0, 500.0),
-    links: ["sol", "procyon"],
+    links: ["sol", "procyon", "hawking"],
     planets: [
         (
             id: "barnard-dock",

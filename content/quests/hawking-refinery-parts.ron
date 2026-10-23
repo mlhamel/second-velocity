@@ -1,0 +1,12 @@
+(
+    id: "hawking-refinery-parts",
+    name: "Refinery Parts to Tarsis Port",
+    giver: ("hawking", "hawking-stand"),
+    kind: Delivery(
+        commodity: "machinery",
+        qty: 4,
+        destination: ("tarsis", "tarsis-port"),
+    ),
+    reward_credits: 650,
+    description: "Four crates of refinery internals, stamped as agricultural spares, bound for a Tarsis shop that fixes things the foundry says cannot be fixed. Do not drop the crate marked DO NOT DROP.",
+)

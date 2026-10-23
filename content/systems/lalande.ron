@@ -1,0 +1,30 @@
+(
+    id: "lalande",
+    name: "Lalande's Green",
+    government: "confederation",
+    description: "A breadbasket world the Confederation found late and taxed immediately. Every field is laser-banked against the cold, and every farmhouse has a flag and a shotgun over the door.",
+    position: (400.0, 1800.0),
+    links: ["sol", "sirius"],
+    planets: [
+        (
+            id: "greenreach",
+            name: "Greenreach",
+            description: "Grain towers to the horizon, all of them banked against the frost season. The town square has one statue, four banks, and a farmers' market that takes the whole weekend.",
+            sprite: Some("textures/planets/greenreach.png"),
+            chief: Some((
+                name: "Mayor Abiola",
+                portrait: Some("textures/chiefs/greenreach.png"),
+                greeting: "Welcome to Greenreach, friend. Festival's in two weeks, so mind where you park that boat. Everything's fine. Everything's always fine.",
+                offer_text: "Cold snap browned the south fields, so I'm sitting on cloth nobody ordered and credit nobody's paid. Move a bolt or two and I'll owe you a favor. I keep those.",
+                tribute_text: "Landing fee's the posted rate. The 'voluntary civic enhancement' line is also posted, and the mayor's re-election fund thanks you kindly.",
+                quest_text: "The grain board pins contracts in the co-op office. Fair pay, honest hours, and you'll want your reactor shielded — some of the cold-chain produce bites back.",
+            )),
+            commodities: [
+                (id: "food", price: 6),
+                (id: "textiles", price: 10),
+                (id: "machinery", price: 48),
+                (id: "medicine", price: 58),
+            ],
+        ),
+    ],
+)

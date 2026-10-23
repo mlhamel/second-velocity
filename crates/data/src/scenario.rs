@@ -4,6 +4,10 @@ fn default_max_ticks() -> u64 {
     5_000
 }
 
+fn default_star_approach() -> f32 {
+    1.3
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ScenarioDef {
     pub id: String,
@@ -36,6 +40,11 @@ pub enum ScenarioStep {
     FlyToSystem {
         system: String,
     },
+    FlyToStar {
+        system: String,
+        #[serde(default = "default_star_approach")]
+        approach: f32,
+    },
     Land {
         planet: String,
     },
@@ -50,6 +59,12 @@ pub enum ScenarioStep {
     },
     AssertAlive(bool),
     AssertSystem(String),
+    AssertHull {
+        #[serde(default)]
+        min: Option<f32>,
+        #[serde(default)]
+        max: Option<f32>,
+    },
     AssertDocked(Option<String>),
     AssertCredits {
         #[serde(default)]

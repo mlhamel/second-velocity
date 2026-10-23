@@ -85,6 +85,11 @@ impl ContentPack {
                     validate_asset(&assets_root, portrait)?;
                 }
             }
+            if let Some(star) = &system.star
+                && let Some(sprite) = &star.sprite
+            {
+                validate_asset(&assets_root, sprite)?;
+            }
         }
         Ok(())
     }
@@ -148,6 +153,14 @@ impl ContentPack {
                     id: system.id.clone(),
                 });
             }
+            if let Some(star) = &system.star
+                && star.radius <= 0.0
+            {
+                return Err(ContentError::UnknownReference {
+                    kind: "star config",
+                    id: system.id.clone(),
+                });
+            }
             for link in &system.links {
                 validate_reference("system link", link, &system_ids)?;
                 let target_has_back_link = systems
@@ -197,6 +210,19 @@ impl ContentPack {
                     }
                     ScenarioStep::FlyToSystem { system } | ScenarioStep::AssertSystem(system) => {
                         validate_reference("scenario system", system, &system_ids)?;
+                    }
+                    ScenarioStep::FlyToStar { system, .. } => {
+                        validate_reference("scenario system", system, &system_ids)?;
+                        let has_star = systems
+                            .iter()
+                            .find(|target| &target.id == system)
+                            .is_some_and(|target| target.star.is_some());
+                        if !has_star {
+                            return Err(ContentError::UnknownReference {
+                                kind: "scenario star target",
+                                id: system.clone(),
+                            });
+                        }
                     }
                     ScenarioStep::Land { planet } => {
                         validate_reference("scenario planet", planet, &planet_ids)?;

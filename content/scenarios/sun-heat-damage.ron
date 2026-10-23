@@ -1,0 +1,14 @@
+(
+    id: "sun-heat-damage",
+    name: "Sun Corona Heat Damage",
+    description: "Skim the Sol corona, take ramping heat damage on shields and hull, and live with the scorch marks.",
+    max_ticks: 3000,
+    steps: [
+        AssertSystem("sol"),
+        ClearMeteorites,
+        FlyToStar(system: "sol"),
+        Advance(ticks: 120),
+        AssertHull(max: Some(45.0)),
+        AssertAlive(true),
+    ],
+)

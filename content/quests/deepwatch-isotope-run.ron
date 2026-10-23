@@ -1,0 +1,12 @@
+(
+    id: "deepwatch-isotope-run",
+    name: "Tracer Isotopes to Kestrel's Drift",
+    giver: ("trappist", "deepwatch"),
+    kind: Delivery(
+        commodity: "isotopes",
+        qty: 4,
+        destination: ("cygnus-x1", "kestrel-drift"),
+    ),
+    reward_credits: 700,
+    description: "Four cases of tracer isotopes for the Drift's assay office. The half-life gives you slack; the shift schedule does not. Keep the crates away from your reactor and your crew away from the crates.",
+)

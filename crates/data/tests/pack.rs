@@ -11,11 +11,11 @@ fn base_pack_loads() {
     let pack = ContentPack::load_dir(&root).expect("base pack must load");
 
     assert_eq!(pack.manifest.id, "evr-base");
-    assert_eq!(pack.ships.len(), 17);
-    assert_eq!(pack.systems.len(), 11);
+    assert_eq!(pack.ships.len(), 25);
+    assert_eq!(pack.systems.len(), 15);
     assert_eq!(pack.outfits.len(), 1);
-    assert_eq!(pack.quests.len(), 4);
-    assert_eq!(pack.scenarios.len(), 5);
+    assert_eq!(pack.quests.len(), 10);
+    assert_eq!(pack.scenarios.len(), 6);
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");
@@ -32,11 +32,40 @@ fn base_pack_loads() {
     let sol = pack.system("sol").expect("sol exists");
     assert_eq!(sol.government, "confederation");
     assert_eq!(sol.planets.len(), 1);
-    assert_eq!(sol.planets[0].commodities.len(), 3);
+    assert_eq!(sol.planets[0].commodities.len(), 5);
     assert!(sol.planets[0].chief.is_some());
     assert!(sol.meteorites.is_some());
     assert!(sol.links.contains(&"alpha-centauri".to_owned()));
     assert!(sol.links.contains(&"vega".to_owned()));
+
+    let sol_star = sol.star.as_ref().expect("sol has a star");
+    assert_eq!(sol_star.radius, 240.0);
+    assert_eq!(
+        sol_star.sprite.as_deref(),
+        Some("textures/stars/corona.png")
+    );
+    assert_eq!(
+        pack.system("sirius")
+            .and_then(|s| s.star.as_ref())
+            .map(|s| s.radius),
+        Some(220.0)
+    );
+    assert_eq!(
+        pack.system("cygnus-x1")
+            .and_then(|s| s.star.as_ref())
+            .map(|s| s.radius),
+        Some(220.0)
+    );
+    assert_eq!(
+        pack.system("hawking")
+            .and_then(|s| s.star.as_ref())
+            .map(|s| s.radius),
+        Some(220.0)
+    );
+    assert!(
+        pack.system("alpha-centauri")
+            .is_some_and(|s| s.star.is_none())
+    );
 
     let alpha = pack
         .system("alpha-centauri")
@@ -58,6 +87,71 @@ fn base_pack_loads() {
     let blaster = pack.outfit("light-blaster").expect("light-blaster exists");
     let evr_data::OutfitKind::Weapon(weapon) = &blaster.kind;
     assert!(weapon.damage > 0.0);
+}
+
+#[test]
+fn star_placements_keep_heat_zones_clear() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+    let pack = ContentPack::load_dir(&root).expect("base pack must load");
+
+    const MEMBERSHIP_RADIUS: f32 = 800.0;
+    const PLANET_OFFSET_X: f32 = 500.0;
+    const PLANET_SPACING: f32 = 600.0;
+    const PLANET_RADIUS: f32 = 90.0;
+
+    for system in &pack.systems {
+        let Some(star) = &system.star else {
+            continue;
+        };
+        let star_pos = (
+            system.position.0 + star.position.0,
+            system.position.1 + star.position.1,
+        );
+        let heat_radius = 1.8 * star.radius;
+        let offset_len = (star.position.0.hypot(star.position.1)).max(0.0);
+
+        for other in &pack.systems {
+            if other.id == system.id {
+                continue;
+            }
+            let dx = star_pos.0 - other.position.0;
+            let dy = star_pos.1 - other.position.1;
+            let distance = dx.hypot(dy);
+            assert!(
+                distance > MEMBERSHIP_RADIUS + heat_radius,
+                "{} star heat zone reaches into {}'s membership disc (dist {distance:.0})",
+                system.id,
+                other.id
+            );
+        }
+
+        if let Some(field) = &system.meteorites {
+            assert!(
+                offset_len > field.radius + heat_radius,
+                "{} star heat zone penetrates its own meteorite field disc",
+                system.id
+            );
+        }
+
+        for (index, planet) in system.planets.iter().enumerate() {
+            let planet_dx =
+                star_pos.0 - (system.position.0 + PLANET_OFFSET_X + index as f32 * PLANET_SPACING);
+            let planet_dy = star_pos.1 - system.position.1;
+            let distance = planet_dx.hypot(planet_dy) - PLANET_RADIUS;
+            assert!(
+                distance > heat_radius,
+                "{} star heat zone reaches planet {}'s approach lane",
+                system.id,
+                planet.id
+            );
+        }
+
+        assert!(
+            offset_len - heat_radius > 400.0,
+            "{} star heat zone comes too close to its system's spawn point",
+            system.id
+        );
+    }
 }
 
 #[test]

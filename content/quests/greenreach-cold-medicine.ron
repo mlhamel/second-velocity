@@ -1,0 +1,13 @@
+(
+    id: "greenreach-cold-medicine",
+    name: "Cold-Chain Tonic for Kashmir Fields",
+    giver: ("lalande", "greenreach"),
+    kind: Delivery(
+        commodity: "medicine",
+        qty: 3,
+        destination: ("new-kashmir", "kashmir-fields"),
+        deadline_secs: Some(240),
+    ),
+    reward_credits: 600,
+    description: "Three tons of fever tonic for the Kashmir harvest crews, packed in coolant that holds for four minutes short of forever. The clinic on Kashmir Fields bills by the hour and buries by the acre. Hurry.",
+)

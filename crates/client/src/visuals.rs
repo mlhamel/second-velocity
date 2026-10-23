@@ -6,6 +6,7 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_protocol::{
     Explosion, Heading, Hull, Meteorite, PlanetTag, Position, Projectile, ShipInfo, ShipKind,
+    StarTag,
 };
 
 const FLASH_SECS: f32 = 0.18;
@@ -19,6 +20,7 @@ impl Plugin for VisualsPlugin {
             (
                 attach_ship_visuals,
                 attach_planet_visuals,
+                attach_star_visuals,
                 attach_projectile_visuals,
                 attach_meteorite_visuals,
                 detect_hits,
@@ -27,6 +29,7 @@ impl Plugin for VisualsPlugin {
                 debris_flight,
                 sync_ship_transforms,
                 sync_planet_transforms,
+                sync_star_transforms,
                 sync_projectile_transforms,
                 sync_meteorite_transforms,
                 parallax,
@@ -42,6 +45,9 @@ struct ShipVisual;
 
 #[derive(Component)]
 struct PlanetVisual;
+
+#[derive(Component)]
+struct StarVisual;
 
 #[derive(Component)]
 struct ProjectileVisual;
@@ -143,6 +149,34 @@ fn attach_planet_visuals(
         sprite.color = color;
         sprite.custom_size = Some(Vec2::splat(planet.radius * 2.0));
         commands.entity(entity).insert((PlanetVisual, sprite));
+    }
+}
+
+type AddedStars<'w, 's> = Query<'w, 's, (Entity, &'static StarTag), (Added<StarTag>, With<Remote>)>;
+
+fn attach_star_visuals(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    asset_server: Res<AssetServer>,
+    content: Res<ClientContent>,
+    added: AddedStars,
+) {
+    for (entity, star) in &added {
+        let sprite_path = content
+            .0
+            .system(&star.system)
+            .and_then(|system| system.star.as_ref())
+            .and_then(|s| s.sprite.clone());
+        let image = match sprite_path {
+            Some(path) => asset_server.load(path),
+            None => textures.star.clone(),
+        };
+        let mut sprite = Sprite::from_image(image);
+        sprite.color = Color::WHITE;
+        // The texture's corona falloff reaches 48% of the sprite, so scale it
+        // to make the visible halo match the 1.8x-radius heat-zone boundary.
+        sprite.custom_size = Some(Vec2::splat(star.radius * 3.75));
+        commands.entity(entity).insert((StarVisual, sprite));
     }
 }
 
@@ -265,6 +299,12 @@ fn sync_ship_transforms(mut ships: Query<(&Position, &Heading, &mut Transform), 
 fn sync_planet_transforms(mut planets: Query<(&Position, &mut Transform), With<PlanetVisual>>) {
     for (position, mut transform) in &mut planets {
         transform.translation = position.0.extend(0.0);
+    }
+}
+
+fn sync_star_transforms(mut stars: Query<(&Position, &mut Transform), With<StarVisual>>) {
+    for (position, mut transform) in &mut stars {
+        transform.translation = position.0.extend(-2.0);
     }
 }
 

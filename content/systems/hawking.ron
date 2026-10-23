@@ -1,0 +1,42 @@
+(
+    id: "hawking",
+    name: "Hawking's Reach",
+    government: "independent",
+    description: "A staging camp for ships that work the blackest part of the map. Fuel towers stand on the safe side of a painted line, and the paint, everyone insists, is regulation grade.",
+    position: (3000.0, -900.0),
+    links: ["barnard", "new-kashmir"],
+    star: Some((
+        position: (1150.0, -1350.0),
+        radius: 220.0,
+        sprite: Some("textures/stars/corona.png"),
+    )),
+    planets: [
+        (
+            id: "hawking-stand",
+            name: "Hawking Stand",
+            description: "A gantry town of fuel barges and salvage yards that never quite turns its engines off. The bar serves drink tokens stamped 'VOID WHERE PROHIBITED'.",
+            sprite: Some("textures/planets/hawking-stand.png"),
+            chief: Some((
+                name: "Warden Ferrow",
+                portrait: Some("textures/chiefs/hawking-stand.png"),
+                greeting: "Hawking Stand traffic. Log your departure vector before you drink, not after. We've stopped scraping hulls off the far markers; the markers cost more.",
+                offer_text: "The refinery over-ran this quarter and the holding tanks are full. Move isotopes at a rate I'd call generous if I were being audited. I am.",
+                tribute_text: "Hazard-zone operations levy, plus the survivors' relief fund. The fund pays out. The paperwork proves it; the paperwork never lies.",
+                quest_text: "The salvage board has contracts nobody sane signs and one or two you might. Read the indemnity clause twice, then read it once more in the dark.",
+            )),
+            commodities: [
+                (id: "isotopes", price: 45),
+                (id: "ore", price: 30),
+                (id: "machinery", price: 52),
+                (id: "food", price: 10),
+            ],
+        ),
+    ],
+    meteorites: Some((
+        count: 12,
+        radius: 1300.0,
+        stationary_weight: 2,
+        slow_weight: 5,
+        fast_weight: 3,
+    )),
+)

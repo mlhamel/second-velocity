@@ -4,14 +4,14 @@ use bevy::math::Vec2;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon::shared::backend::connected_client::NetworkId;
-use evr_core::{Account, FlightModel, ShipState, WeaponState};
+use evr_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
 use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, WeaponDef};
 use evr_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt,
     EncounterOption, Explosion, Fuel, HailShip, Heading, Hull, LoginRequest, LoginResponse,
     Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget,
     RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle,
-    SetTurn, SetWarp, ShipInfo, ShipKind, SystemMembership,
+    SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemMembership,
 };
 
 use crate::Content;
@@ -44,6 +44,7 @@ pub const DEFAULT_ENCOUNTER_SEED: u64 = 0;
 pub const TRIBUTE_CREDITS: u32 = 50;
 pub const OFFER_QTY: u32 = 3;
 pub const METEORITE_HIT_COOLDOWN_SECS: f32 = 0.6;
+pub const STAR_HEAT_NOTICE_COOLDOWN_SECS: f32 = 12.0;
 pub const NPC_OWNER_BASE: u64 = 10_000;
 pub const MERCHANT_LANE_Y: f32 = 220.0;
 
@@ -77,6 +78,15 @@ pub struct MeteoriteMotion {
     pub center: Vec2,
     pub field_radius: f32,
     pub hit_cooldown: f32,
+}
+
+#[derive(Component, Debug, Clone)]
+pub struct HeatWarningCooldown(f32);
+
+impl Default for HeatWarningCooldown {
+    fn default() -> Self {
+        Self(0.0)
+    }
 }
 
 #[derive(Resource, Debug, Clone)]
@@ -265,6 +275,7 @@ impl Plugin for GameplayPlugin {
                     projectile_flight,
                     projectile_hits,
                     meteorite_ship_collisions,
+                    star_heat,
                     shield_regen,
                     quest_progress,
                     ship_deaths,
@@ -308,6 +319,7 @@ pub fn spawn_ship(
         },
         Control::default(),
         LastDamagedBy::default(),
+        HeatWarningCooldown::default(),
         Owner(owner.unwrap_or(0)),
         Position(base + offset),
         Heading(0.0),
@@ -457,6 +469,17 @@ fn spawn_world(mut commands: Commands, content: Res<Content>) {
             ));
         }
 
+        if let Some(star) = &system.star {
+            commands.spawn((
+                Replicated,
+                StarTag {
+                    system: system.id.clone(),
+                    radius: star.radius,
+                },
+                Position(sys_center + Vec2::new(star.position.0, star.position.1)),
+            ));
+        }
+
         if let Some(field) = &system.meteorites {
             let total_weight =
                 (field.stationary_weight + field.slow_weight + field.fast_weight).max(1);
@@ -573,6 +596,30 @@ fn spawn_living_galaxy_npcs(commands: &mut Commands, pack: &ContentPack) {
             "medicine",
             14,
         ),
+        (
+            "terran-courier",
+            "lalande",
+            Vec2::new(150.0, MERCHANT_LANE_Y),
+            "sol",
+            "food",
+            10,
+        ),
+        (
+            "vellari-sprinter",
+            "cygnus-x1",
+            Vec2::new(130.0, MERCHANT_LANE_Y),
+            "tarsis",
+            "ore",
+            6,
+        ),
+        (
+            "sylph-dreamweaver",
+            "hawking",
+            Vec2::new(170.0, MERCHANT_LANE_Y),
+            "new-kashmir",
+            "isotopes",
+            8,
+        ),
     ];
 
     for (idx, (ship_id, start_sys, offset, dest_sys, commodity, qty)) in
@@ -627,6 +674,18 @@ fn spawn_living_galaxy_npcs(commands: &mut Commands, pack: &ContentPack) {
             Vec2::new(-210.0, 260.0),
             1.9_f32,
         ),
+        (
+            "terran-frigate",
+            "lalande",
+            Vec2::new(-170.0, 240.0),
+            0.5_f32,
+        ),
+        (
+            "auroran-titan",
+            "cygnus-x1",
+            Vec2::new(-200.0, 260.0),
+            2.1_f32,
+        ),
     ];
 
     for (ship_id, sys_id, offset, angle) in defender_roster {
@@ -666,6 +725,12 @@ fn spawn_living_galaxy_npcs(commands: &mut Commands, pack: &ContentPack) {
             "ross-154",
             Vec2::new(100.0, -220.0),
             "barnard",
+        ),
+        (
+            "sylph-skiff",
+            "trappist",
+            Vec2::new(105.0, -215.0),
+            "procyon",
         ),
     ];
 
@@ -1640,6 +1705,37 @@ fn meteorite_ship_collisions(
                 }
                 break;
             }
+        }
+    }
+}
+
+fn star_heat(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut ships: Query<(&mut Ship, Option<&ClientRef>, &mut HeatWarningCooldown), Without<DockedAt>>,
+    stars: Query<(&StarTag, &Position)>,
+) {
+    let dt = time.delta_secs();
+    for (mut ship, client_ref, mut warn_cooldown) in &mut ships {
+        warn_cooldown.0 = (warn_cooldown.0 - dt).max(0.0);
+        let mut total_dps = 0.0;
+        for (star, star_pos) in &stars {
+            let dist = ship.0.position.distance(star_pos.0);
+            total_dps += star_heat_dps(dist, star.radius);
+        }
+        if total_dps <= 0.0 {
+            continue;
+        }
+        ship.0.apply_damage(total_dps * dt);
+        if let Some(client_ref) = client_ref
+            && warn_cooldown.0 <= 0.0
+        {
+            notice(
+                &mut commands,
+                ClientId::Client(client_ref.0),
+                "Stellar corona: hull heat climbing. Back off or bake.",
+            );
+            warn_cooldown.0 = STAR_HEAT_NOTICE_COOLDOWN_SECS;
         }
     }
 }
@@ -2980,6 +3076,8 @@ mod tests {
             client.add_plugins(RepliconPlugins.set(ServerPlugin::new(PostUpdate)));
             client.add_plugins(RepliconRenetPlugins);
             evr_protocol::register(&mut client);
+            client.init_resource::<TestNoticeLog>();
+            client.add_observer(record_test_notice);
 
             let (server_channels, client_channels) = {
                 let channels = client.world().resource::<RepliconChannels>();
@@ -3850,6 +3948,198 @@ mod tests {
         assert_eq!(
             remaining, 0,
             "Small meteorites must disappear when destroyed"
+        );
+    }
+
+    #[derive(Resource, Default)]
+    struct TestNoticeLog(Vec<String>);
+
+    fn record_test_notice(trigger: On<Notice>, mut log: ResMut<TestNoticeLog>) {
+        log.0.push(trigger.event().text.clone());
+    }
+
+    impl Harness {
+        fn star_in_system(&mut self, system: &str) -> Option<(Vec2, f32)> {
+            let mut q = self.server.world_mut().query::<(&StarTag, &Position)>();
+            let world = self.server.world();
+            q.iter(world)
+                .find(|(star, _)| star.system == system)
+                .map(|(star, pos)| (pos.0, star.radius))
+        }
+
+        fn drain_notices(&mut self) -> Vec<String> {
+            std::mem::take(&mut self.client.world_mut().resource_mut::<TestNoticeLog>().0)
+        }
+
+        fn server_hull_by_owner(&mut self, owner: u64) -> Option<(f32, f32)> {
+            let mut q = self.server.world_mut().query::<(&Owner, &Hull)>();
+            let world = self.server.world();
+            q.iter(world)
+                .find(|(o, _)| o.0 == owner)
+                .map(|(_, hull)| (hull.shields, hull.armor))
+        }
+    }
+
+    #[test]
+    fn star_replicates_to_client() {
+        let mut h = Harness::new();
+        h.step_until(300, |h| {
+            let mut stars = h
+                .client
+                .world_mut()
+                .query_filtered::<(&StarTag,), With<Remote>>();
+            let world = h.client.world();
+            stars.iter(world).count() >= 4
+        });
+        let sol_star = h
+            .client
+            .world_mut()
+            .query_filtered::<(&StarTag,), With<Remote>>()
+            .iter(h.client.world())
+            .find(|(star,)| star.system == "sol")
+            .map(|(star,)| star.clone());
+        let sol_star = sol_star.expect("sol star must replicate");
+        assert_eq!(sol_star.radius, 240.0);
+    }
+
+    #[test]
+    fn star_heat_is_zero_at_safe_distance() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let my_ship = h.my_ship().unwrap();
+        let initial = h.client_component::<Hull>(my_ship).unwrap();
+
+        for _ in 0..120 {
+            h.step();
+        }
+
+        let after = h.client_component::<Hull>(my_ship).unwrap();
+        assert_eq!(
+            (after.shields, after.armor),
+            (initial.shields, initial.armor),
+            "spawn point and planet lanes must sit outside every star's heat zone"
+        );
+    }
+
+    #[test]
+    fn star_heat_ramps_and_warns_near_corona() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let my_ship = h.my_ship().unwrap();
+        let initial = h.client_component::<Hull>(my_ship).unwrap();
+        let (star_pos, star_radius) = h.star_in_system("sol").expect("sol has a star");
+
+        h.set_server_ship(EMBEDDED_CLIENT_ID as u64, |ship| {
+            ship.position = star_pos + Vec2::new(1.3 * star_radius, 0.0);
+            ship.velocity = Vec2::ZERO;
+        });
+        h.step_until(60, |h| {
+            h.client_component::<Hull>(my_ship)
+                .is_some_and(|hull| hull.shields < initial.shields)
+        });
+
+        let after = h.client_component::<Hull>(my_ship).unwrap();
+        assert!(
+            after.shields < initial.shields,
+            "the corona ramp must chew shields before armor"
+        );
+        let notices = h.drain_notices();
+        assert!(
+            notices.iter().any(|n| n.contains("corona")),
+            "entering the heat zone must warn the player, got {notices:?}"
+        );
+    }
+
+    #[test]
+    fn star_heat_lethal_core_destroys_player() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let (star_pos, star_radius) = h.star_in_system("sol").expect("sol has a star");
+
+        h.set_server_ship(EMBEDDED_CLIENT_ID as u64, |ship| {
+            ship.position = star_pos + Vec2::new(0.3 * star_radius, 0.0);
+            ship.velocity = Vec2::ZERO;
+        });
+        h.step_until(60, |h| h.my_ship().is_none());
+    }
+
+    #[test]
+    fn star_heat_burns_npc_ships() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let (star_pos, star_radius) = h.star_in_system("sol").expect("sol has a star");
+
+        let npc_owner = 99_001u64;
+        h.server
+            .world_mut()
+            .resource_scope(|world, content: Mut<Content>| {
+                let mut cmds = world.commands();
+                spawn_ship(
+                    &mut cmds,
+                    &content.0,
+                    POLICE_SHIP,
+                    ShipKind::Police,
+                    Some(npc_owner),
+                    "sol",
+                    Vec2::ZERO,
+                );
+            });
+        h.server.world_mut().flush();
+        let initial = h.server_hull_by_owner(npc_owner).expect("npc hull");
+
+        h.set_server_ship(npc_owner, |ship| {
+            ship.position = star_pos + Vec2::new(1.1 * star_radius, 0.0);
+            ship.velocity = Vec2::ZERO;
+        });
+        h.step_until(60, |h| {
+            h.server_hull_by_owner(npc_owner)
+                .is_some_and(|(shields, armor)| shields < initial.0 || armor < initial.1)
+        });
+
+        let after = h
+            .server_hull_by_owner(npc_owner)
+            .expect("npc survives the test stay");
+        assert!(
+            after.0 < initial.0 || after.1 < initial.1,
+            "NPCs must burn in the corona like anyone else"
+        );
+    }
+
+    #[test]
+    fn star_heat_spares_docked_ships() {
+        let mut h = Harness::new();
+        h.step_until(200, |h| h.my_ship().is_some());
+        let my_ship = h.my_ship().unwrap();
+
+        h.set_server_ship(EMBEDDED_CLIENT_ID as u64, |ship| {
+            ship.position = Vec2::new(480.0, 0.0);
+            ship.velocity = Vec2::ZERO;
+        });
+        for _ in 0..5 {
+            h.step();
+        }
+        h.send(RequestLand {
+            planet: "earth".into(),
+        });
+        h.step_until(100, |h| h.client_component::<DockedAt>(my_ship).is_some());
+        let docked = h.client_component::<DockedAt>(my_ship).unwrap();
+        assert_eq!(docked.planet, "earth");
+
+        let (star_pos, star_radius) = h.star_in_system("sol").expect("sol has a star");
+        let initial = h.client_component::<Hull>(my_ship).unwrap();
+        h.set_server_ship(EMBEDDED_CLIENT_ID as u64, |ship| {
+            ship.position = star_pos + Vec2::new(0.3 * star_radius, 0.0);
+            ship.velocity = Vec2::ZERO;
+        });
+        for _ in 0..60 {
+            h.step();
+        }
+
+        let after = h.client_component::<Hull>(my_ship).unwrap();
+        assert_eq!(
+            (after.shields, after.armor),
+            (initial.shields, initial.armor),
+            "docked ships must be immune to stellar heat"
         );
     }
 

@@ -70,6 +70,12 @@ pub struct PlanetTag {
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StarTag {
+    pub system: String,
+    pub radius: f32,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SystemMembership(pub String);
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -277,6 +283,7 @@ pub fn register(app: &mut App) {
         .replicate::<ShipInfo>()
         .replicate::<Projectile>()
         .replicate::<PlanetTag>()
+        .replicate::<StarTag>()
         .replicate::<SystemMembership>()
         .replicate::<DockedAt>()
         .replicate::<AccountState>()
@@ -337,6 +344,16 @@ mod tests {
             credits: 500,
             cargo: vec![("food".into(), 3)],
             cargo_capacity: 20,
+        });
+        roundtrip(PlanetTag {
+            system: "sol".into(),
+            id: "earth".into(),
+            name: "Earth".into(),
+            radius: 90.0,
+        });
+        roundtrip(StarTag {
+            system: "sol".into(),
+            radius: 240.0,
         });
         roundtrip(ChiefEncounter {
             chief_name: "Port Director Lin".into(),

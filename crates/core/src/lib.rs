@@ -198,6 +198,29 @@ impl MeteoriteTier {
     }
 }
 
+pub const STAR_HEAT_BEGIN: f32 = 1.8;
+pub const STAR_SURFACE_DPS: f32 = 25.0;
+pub const STAR_CORE_FRACTION: f32 = 0.5;
+pub const STAR_CORE_DPS: f32 = 500.0;
+
+pub fn star_heat_dps(distance: f32, radius: f32) -> f32 {
+    if radius <= 0.0 {
+        return 0.0;
+    }
+    if distance >= radius * STAR_HEAT_BEGIN {
+        return 0.0;
+    }
+    if distance <= radius * STAR_CORE_FRACTION {
+        return STAR_CORE_DPS;
+    }
+    if distance >= radius {
+        let ramp = (radius * STAR_HEAT_BEGIN - distance) / (radius * (STAR_HEAT_BEGIN - 1.0));
+        return STAR_SURFACE_DPS * ramp;
+    }
+    let depth = (radius - distance) / (radius * (1.0 - STAR_CORE_FRACTION));
+    STAR_SURFACE_DPS + (STAR_CORE_DPS - STAR_SURFACE_DPS) * depth
+}
+
 pub fn split_meteorite_velocities(
     parent_velocity: Vec2,
     fallback_dir: Vec2,
@@ -378,5 +401,33 @@ mod tests {
         assert!(v1.y > 0.0 && v2.y < 0.0);
         assert!((v1.length() - 55.0).abs() < 1e-3);
         assert!((v2.length() - 55.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn star_heat_ramp_is_zero_beyond_heat_zone() {
+        let radius = 220.0;
+        assert_eq!(star_heat_dps(radius * STAR_HEAT_BEGIN, radius), 0.0);
+        assert_eq!(star_heat_dps(radius * STAR_HEAT_BEGIN * 2.0, radius), 0.0);
+        assert_eq!(star_heat_dps(radius, 0.0), 0.0);
+    }
+
+    #[test]
+    fn star_heat_ramp_reaches_surface_dps_and_lethal_core() {
+        let radius = 220.0;
+        assert!((star_heat_dps(radius, radius) - STAR_SURFACE_DPS).abs() < 1e-3);
+        assert!((star_heat_dps(1.4 * radius, radius) - 12.5).abs() < 1e-3);
+        assert!(
+            star_heat_dps(0.75 * radius, radius) > 2.0 * STAR_SURFACE_DPS,
+            "inside the star the ramp must steepen past surface heat"
+        );
+        assert_eq!(
+            star_heat_dps(radius * STAR_CORE_FRACTION, radius),
+            STAR_CORE_DPS
+        );
+        assert_eq!(star_heat_dps(0.0, radius), STAR_CORE_DPS);
+        assert!(
+            star_heat_dps(radius * STAR_CORE_FRACTION * 0.9, radius) >= STAR_CORE_DPS,
+            "the core fraction must be lethal regardless of hull"
+        );
     }
 }

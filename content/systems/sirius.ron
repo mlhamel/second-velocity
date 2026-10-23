@@ -4,17 +4,31 @@
     government: "independent",
     description: "Old money in old ships. The dog star bites.",
     position: (-1200.0, -1600.0),
-    links: ["vega", "wolf-359", "new-kashmir"],
+    links: ["vega", "wolf-359", "new-kashmir", "lalande"],
+    star: Some((
+        position: (0.0, -2200.0),
+        radius: 220.0,
+        sprite: Some("textures/stars/corona.png"),
+    )),
     planets: [
         (
             id: "sirius-prime",
             name: "Sirius Prime",
             description: "A world of glittering domes and glittering debts.",
+            chief: Some((
+                name: "Bursar Halloway",
+                portrait: Some("textures/chiefs/sirius-prime.png"),
+                greeting: "Sirius Prime customs. Do present your manifest opened to the first page; my staff resents riffling. Berth allocation is generous, the berths themselves less so.",
+                offer_text: "A cousin's estate has surfaced with a warehouse nobody can legally claim. The inventory, however, is entirely claimable. My discretion is included in the tariff.",
+                tribute_text: "The dome maintenance assessment, the view tax, and the non-resident arrival duty. The view, you will agree, is worth it. The dome agrees less.",
+                quest_text: "The family registry posts errands with sums attached that polite people do not discuss aloud. We find off-worlders wonderfully suited to the impolite ones.",
+            )),
             commodities: [
                 (id: "food", price: 9),
                 (id: "machinery", price: 52),
                 (id: "medicine", price: 48),
                 (id: "luxury", price: 88),
+                (id: "textiles", price: 32),
             ],
         ),
     ],

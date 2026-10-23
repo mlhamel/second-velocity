@@ -4,7 +4,12 @@
     government: "confederation",
     description: "The crowded heart of human space. Traffic control queues stretch past lunar orbit.",
     position: (0.0, 0.0),
-    links: ["alpha-centauri", "vega", "wolf-359", "barnard"],
+    links: ["alpha-centauri", "vega", "wolf-359", "barnard", "lalande"],
+    star: Some((
+        position: (300.0, -1600.0),
+        radius: 240.0,
+        sprite: Some("textures/stars/corona.png"),
+    )),
     planets: [
         (
             id: "earth",
@@ -23,6 +28,8 @@
                 (id: "food", price: 8),
                 (id: "machinery", price: 45),
                 (id: "medicine", price: 62),
+                (id: "ore", price: 40),
+                (id: "textiles", price: 18),
             ],
         ),
     ],
