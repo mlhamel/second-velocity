@@ -394,6 +394,12 @@ impl ContentPack {
             .collect();
 
         for quest in quests {
+            if quest.id.starts_with("contract-") {
+                return Err(ContentError::UnknownReference {
+                    kind: "quest id prefix",
+                    id: quest.id.clone(),
+                });
+            }
             let giver_ref = format!("{}/{}", quest.giver.0, quest.giver.1);
             validate_reference("quest giver planet", &giver_ref, &dockable_refs)?;
             validate_station_quest_host(systems, &quest.giver)?;

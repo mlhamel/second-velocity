@@ -91,5 +91,6 @@
         "scenarios/shipyard-upgrade.ron",
         "scenarios/outfitter-loadout.ron",
         "scenarios/market-drift.ron",
+        "scenarios/contract-refresh.ron",
     ],
 )

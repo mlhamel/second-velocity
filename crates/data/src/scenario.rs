@@ -147,6 +147,9 @@ pub enum ScenarioStep {
     AdvanceEconomyTicks {
         ticks: u32,
     },
+    AdvanceContractRefreshes {
+        refreshes: u32,
+    },
     AssertPrice {
         system: String,
         location: String,

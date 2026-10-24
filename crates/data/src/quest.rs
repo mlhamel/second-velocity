@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct QuestDef {
     pub id: String,
     pub name: String,
@@ -10,7 +10,7 @@ pub struct QuestDef {
     pub description: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub enum QuestKind {
     Delivery {
         commodity: String,

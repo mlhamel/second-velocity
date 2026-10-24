@@ -16,7 +16,7 @@ fn base_pack_loads() {
     assert_eq!(pack.outfits.len(), 5);
     assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 13);
+    assert_eq!(pack.scenarios.len(), 14);
 
     let food = pack.commodity("food").expect("food commodity exists");
     assert_eq!(food.name, "Foodstuffs");

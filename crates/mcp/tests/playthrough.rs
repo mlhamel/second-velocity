@@ -316,7 +316,7 @@ fn quest_loop_playthrough() {
 fn all_pack_scenarios_pass() {
     let content = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let reports = evr_mcp::run_scenarios(&content, None).expect("scenarios must load and run");
-    assert_eq!(reports.len(), 13);
+    assert_eq!(reports.len(), 14);
     println!("\n{}", evr_mcp::format_markdown_table(&reports));
     for report in &reports {
         assert!(

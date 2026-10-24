@@ -668,6 +668,21 @@ fn execute_step(
             );
             Ok(())
         }
+        ScenarioStep::AdvanceContractRefreshes { refreshes } => {
+            evr_server::gameplay::contracts::force_contract_refresh(
+                harness.server.world_mut(),
+                *refreshes,
+            );
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
         ScenarioStep::AssertPrice {
             system,
             location,
