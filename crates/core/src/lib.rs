@@ -1,5 +1,6 @@
 use glam::Vec2;
 
+pub mod contract;
 pub mod market;
 
 /// Scripted circular orbit; using elapsed simulation time avoids incremental drift.
