@@ -1,11 +1,11 @@
 use bevy::asset::RenderAssetUsages;
-use bevy::image::Image;
+use bevy::image::{Image, ImageSampler};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 #[derive(Resource)]
 pub struct Textures {
-    pub ship: Handle<Image>,
+    pub ships: [Handle<Image>; 4],
     pub planet: Handle<Image>,
     pub station: Handle<Image>,
     pub star: Handle<Image>,
@@ -20,32 +20,38 @@ pub(crate) fn create_textures(
     mut images: ResMut<Assets<Image>>,
     content: Res<crate::input::ClientContent>,
 ) {
-    let ship = images.add(ship_image(96));
-    let planet = images.add(planet_image(128));
+    let ships = [
+        images.add(ship_image(36)),
+        images.add(ship_image(48)),
+        images.add(ship_image(68)),
+        images.add(ship_image(92)),
+    ];
+    let planet = images.add(planet_image(180));
     let station = images.add(station_image(128));
     let star = images.add(star_image(128));
     let black_hole = images.add(black_hole_image(128));
-    let glow = images.add(glow_image(64));
+    let glow = images.add(glow_image(16));
+    let nebula = images.add(nebula_image(64));
     let chief = images.add(chief_image(128));
     let meteorites = [
-        images.add(meteorite_image(96, 0)),
-        images.add(meteorite_image(96, 1)),
-        images.add(meteorite_image(96, 2)),
+        images.add(meteorite_image(62, 0)),
+        images.add(meteorite_image(38, 1)),
+        images.add(meteorite_image(22, 2)),
     ];
     for system in &content.0.systems {
         for accent in crate::sky_gen::nebula_accents(&system.id, 3) {
-            let mut nebula = Sprite::from_image(glow.clone());
-            nebula.color = accent.color;
-            nebula.custom_size = Some(Vec2::splat(accent.size));
+            let mut nebula_sprite = Sprite::from_image(nebula.clone());
+            nebula_sprite.color = accent.color;
+            nebula_sprite.custom_size = Some(Vec2::splat(accent.size));
             commands.spawn((
-                nebula,
+                nebula_sprite,
                 Transform::from_xyz(accent.position.x, accent.position.y, crate::sky::SKY_Z),
             ));
         }
     }
 
     commands.insert_resource(Textures {
-        ship,
+        ships,
         planet,
         station,
         star,
@@ -140,6 +146,8 @@ fn meteorite_image(size: u32, variant: usize) -> Image {
             data[index + 3] = 255;
         }
     }
+    quantize_shading(&mut data, size, 3);
+    outline_silhouette(&mut data, size, [30, 26, 24]);
     image_from_rgba(size, data)
 }
 
@@ -156,7 +164,9 @@ fn chief_image(size: u32) -> Image {
     fill_circle(&mut data, size, 0.5, 0.52, 0.44, 48, 255);
     fill_polygon(&mut data, size, &shoulders, 180);
     fill_circle(&mut data, size, 0.5, 0.38, 0.16, 225, 255);
-    image_from_rgba(size, data)
+    let mut image = image_from_rgba(size, data);
+    image.sampler = ImageSampler::linear();
+    image
 }
 
 fn ship_image(size: u32) -> Image {
@@ -177,6 +187,8 @@ fn ship_image(size: u32) -> Image {
     fill_polygon(&mut data, size, &hull, 255);
     fill_polygon(&mut data, size, &engine, 255);
     fill_circle(&mut data, size, 0.62, 0.5, 0.05, 70, 255);
+    quantize_shading(&mut data, size, 4);
+    outline_silhouette(&mut data, size, [24, 26, 34]);
 
     image_from_rgba(size, data)
 }
@@ -207,31 +219,57 @@ fn planet_image(size: u32) -> Image {
             }
         }
     }
+    quantize_shading(&mut data, size, 5);
     image_from_rgba(size, data)
 }
 
 fn station_image(size: u32) -> Image {
     let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    let center = s / 2.0;
+    let (outer, inner, strut, core) = (44.0f32, 33.0, 3.0, 11.0);
     for y in 0..size {
         for x in 0..size {
-            let dx = (x as f32 + 0.5) / size as f32 - 0.5;
-            let dy = (y as f32 + 0.5) / size as f32 - 0.5;
-            let radius = dx.hypot(dy);
-            let color = if radius < 0.09 {
-                [95, 230, 220, 255]
-            } else if (0.25..0.35).contains(&radius)
-                || (dx.abs() < 0.035 || dy.abs() < 0.035) && radius < 0.40
-            {
-                [185, 200, 215, 255]
-            } else if (0.12..0.45).contains(&dx.abs()) && (0.06..0.16).contains(&dy.abs()) {
-                [50, 110, 185, 255]
+            let dx = x as f32 + 0.5 - center;
+            let dy = y as f32 + 0.5 - center;
+            let distance = dx.hypot(dy);
+            let color: Option<[u8; 3]> = if distance <= core {
+                Some([95, 230, 220])
+            } else if (inner..=outer).contains(&distance) {
+                if distance > outer - 2.0 || distance < inner + 2.0 {
+                    Some([70, 80, 100])
+                } else {
+                    Some([150, 168, 192])
+                }
+            } else if distance <= outer && (dx.abs() <= strut || dy.abs() <= strut) {
+                Some([110, 124, 150])
             } else {
-                [0, 0, 0, 0]
+                None
             };
-            let index = ((y * size + x) * 4) as usize;
-            data[index..index + 4].copy_from_slice(&color);
+            if let Some(color) = color {
+                let index = ((y * size + x) * 4) as usize;
+                data[index..index + 3].copy_from_slice(&color);
+                data[index + 3] = 255;
+            }
         }
     }
+    for k in 0..12u32 {
+        if k % 4 == 3 {
+            continue;
+        }
+        let angle = k as f32 / 12.0 * std::f32::consts::TAU;
+        let ring = (inner + outer) / 2.0;
+        let x = (center + ring * angle.cos()) as i32;
+        let y = (center + ring * angle.sin()) as i32;
+        let window = if k % 2 == 0 {
+            [120, 240, 230]
+        } else {
+            [255, 220, 120]
+        };
+        let index = ((y * size as i32 + x) * 4) as usize;
+        data[index..index + 3].copy_from_slice(&window);
+    }
+    outline_silhouette(&mut data, size, [21, 24, 32]);
     image_from_rgba(size, data)
 }
 
@@ -240,26 +278,29 @@ fn star_image(size: u32) -> Image {
     let s = size as f32;
     let disc = s * 0.30;
     let corona = s * 0.48;
-    let center = s / 2.0;
+    let core = [255, 244, 214];
+    let bands: [[u8; 4]; 4] = [
+        [255, 196, 110, 235],
+        [255, 140, 60, 160],
+        [255, 96, 46, 95],
+        [210, 60, 40, 45],
+    ];
     for y in 0..size {
         for x in 0..size {
-            let dx = x as f32 + 0.5 - center;
-            let dy = y as f32 + 0.5 - center;
+            let dx = x as f32 + 0.5 - s / 2.0;
+            let dy = y as f32 + 0.5 - s / 2.0;
             let distance = (dx * dx + dy * dy).sqrt();
             let index = ((y * size + x) * 4) as usize;
             if distance <= disc {
-                let rim = (distance / disc).powi(3);
-                let value = (1.0 - rim * 0.25) * 255.0;
-                data[index] = value as u8;
-                data[index + 1] = (value * 0.955) as u8;
-                data[index + 2] = (value * 0.84) as u8;
-                data[index + 3] = 255;
+                data[index..index + 4].copy_from_slice(&[core[0], core[1], core[2], 255]);
             } else if distance <= corona {
-                let falloff = (1.0 - (distance - disc) / (corona - disc)).powi(3);
-                data[index] = 255;
-                data[index + 1] = (110.0 + 90.0 * falloff) as u8;
-                data[index + 2] = (40.0 + 60.0 * falloff) as u8;
-                data[index + 3] = (falloff * 0.85 * 255.0) as u8;
+                let t = 1.0 - (distance - disc) / (corona - disc);
+                let level = (t * 4.0 + bayer(x as i32, y as i32))
+                    .floor()
+                    .clamp(0.0, 4.0) as usize;
+                if level > 0 {
+                    data[index..index + 4].copy_from_slice(&bands[level - 1]);
+                }
             }
         }
     }
@@ -269,6 +310,11 @@ fn star_image(size: u32) -> Image {
 fn black_hole_image(size: u32) -> Image {
     let mut data = vec![0; (size * size * 4) as usize];
     let s = size as f32;
+    let rings: [[u8; 4]; 3] = [
+        [210, 110, 245, 235],
+        [150, 70, 200, 170],
+        [85, 35, 130, 100],
+    ];
     for y in 0..size {
         for x in 0..size {
             let dx = (x as f32 + 0.5) / s - 0.5;
@@ -278,14 +324,20 @@ fn black_hole_image(size: u32) -> Image {
             if distance <= 0.25 {
                 data[index..index + 4].copy_from_slice(&[2, 1, 6, 255]);
             } else if distance <= 0.48 {
-                let ring = (1.0 - ((distance - 0.32) / 0.16).abs()).max(0.0);
-                let brightness = 0.65 + 0.35 * (dy.atan2(dx) * 3.0).sin();
-                data[index..index + 4].copy_from_slice(&[
-                    (210.0 * brightness) as u8,
-                    (110.0 * brightness) as u8,
-                    245,
-                    (ring * 255.0) as u8,
-                ]);
+                let ring = 1.0 - ((distance - 0.32) / 0.16).abs();
+                if ring > 0.0 {
+                    let level = (ring * 3.0 + bayer(x as i32, y as i32))
+                        .floor()
+                        .clamp(0.0, 2.0) as usize;
+                    let shimmer = 0.7 + 0.3 * (dy.atan2(dx) * 3.0).sin();
+                    let band = rings[level];
+                    data[index..index + 4].copy_from_slice(&[
+                        band[0],
+                        band[1],
+                        band[2],
+                        (band[3] as f32 * shimmer) as u8,
+                    ]);
+                }
             }
         }
     }
@@ -296,18 +348,46 @@ fn glow_image(size: u32) -> Image {
     let mut data = vec![0; (size * size * 4) as usize];
     let s = size as f32;
     let radius = s / 2.0;
+    let bands: [(u8, u8); 4] = [(60, 140), (130, 200), (200, 235), (255, 255)];
     for y in 0..size {
         for x in 0..size {
             let dx = x as f32 + 0.5 - radius;
             let dy = y as f32 + 0.5 - radius;
-            let distance = (dx * dx + dy * dy).sqrt() / radius;
-            if distance <= 1.0 {
-                let falloff = (1.0 - distance).powi(2);
+            let t = 1.0 - (dx * dx + dy * dy).sqrt() / radius;
+            if t > 0.0 {
+                let level = (t * 4.0 + bayer(x as i32, y as i32))
+                    .floor()
+                    .clamp(0.0, 4.0) as usize;
+                let (value, alpha) = bands[level.min(3)];
                 let index = ((y * size + x) * 4) as usize;
-                data[index] = 255;
-                data[index + 1] = (160.0 + 95.0 * falloff) as u8;
-                data[index + 2] = (60.0 + 60.0 * falloff) as u8;
-                data[index + 3] = (falloff * 255.0) as u8;
+                data[index] = value;
+                data[index + 1] = value;
+                data[index + 2] = value;
+                data[index + 3] = alpha;
+            }
+        }
+    }
+    image_from_rgba(size, data)
+}
+
+fn nebula_image(size: u32) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    let radius = s / 2.0;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - radius;
+            let dy = y as f32 + 0.5 - radius;
+            let t = 1.0 - (dx * dx + dy * dy).sqrt() / radius;
+            if t > 0.0 {
+                let level = (t * 6.0 + bayer(x as i32, y as i32))
+                    .floor()
+                    .clamp(0.0, 6.0) as usize;
+                let index = ((y * size + x) * 4) as usize;
+                data[index] = (42 * level as u32).min(255) as u8;
+                data[index + 1] = (42 * level as u32).min(255) as u8;
+                data[index + 2] = (42 * level as u32).min(255) as u8;
+                data[index + 3] = (36 * level as u32).min(216) as u8;
             }
         }
     }
@@ -362,6 +442,59 @@ fn point_in_polygon(point: (f32, f32), vertices: &[(f32, f32)]) -> bool {
     inside
 }
 
+const BAYER4: [[u32; 4]; 4] = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+
+fn bayer(x: i32, y: i32) -> f32 {
+    BAYER4[y.rem_euclid(4) as usize][x.rem_euclid(4) as usize] as f32 / 16.0
+}
+
+fn quantize_shading(data: &mut [u8], size: u32, steps: u32) {
+    for y in 0..size {
+        for x in 0..size {
+            let index = ((y * size + x) * 4) as usize;
+            if data[index + 3] == 0 {
+                continue;
+            }
+            let offset = bayer(x as i32, y as i32);
+            for channel in 0..3 {
+                let value = data[index + channel] as f32 / 255.0;
+                let level = (value * steps as f32 + offset).floor();
+                data[index + channel] = ((level / steps as f32) * 255.0).clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+}
+
+fn outline_silhouette(data: &mut [u8], size: u32, color: [u8; 3]) {
+    let mut solid = vec![false; (size * size) as usize];
+    for y in 0..size {
+        for x in 0..size {
+            let index = ((y * size + x) * 4) as usize;
+            solid[(y * size + x) as usize] = data[index + 3] > 0;
+        }
+    }
+    for y in 0..size {
+        for x in 0..size {
+            let cell = (y * size + x) as usize;
+            if !solid[cell] {
+                continue;
+            }
+            let edge = x == 0
+                || y == 0
+                || x + 1 == size
+                || y + 1 == size
+                || !solid[cell - 1]
+                || !solid[cell + 1]
+                || !solid[cell - size as usize]
+                || !solid[cell + size as usize];
+            if edge {
+                let index = cell * 4;
+                data[index..index + 3].copy_from_slice(&color);
+            }
+        }
+    }
+}
+
 pub(crate) fn image_from_rgba(size: u32, data: Vec<u8>) -> Image {
     Image::new(
         Extent3d {
@@ -374,4 +507,36 @@ pub(crate) fn image_from_rgba(size: u32, data: Vec<u8>) -> Image {
         TextureFormat::Rgba8UnormSrgb,
         RenderAssetUsages::default(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn assert_opaque_pixels(image: &Image, min_count: usize) {
+        let data = image.data.as_ref().expect("texture keeps cpu data");
+        let opaque = data.chunks_exact(4).filter(|chunk| chunk[3] > 0).count();
+        assert!(opaque >= min_count, "expected at least {min_count} pixels");
+    }
+
+    #[test]
+    fn procedural_textures_build() {
+        for size in [36, 48, 68, 92] {
+            let ship = ship_image(size);
+            assert_eq!(ship.width(), size);
+            assert_opaque_pixels(&ship, size as usize * size as usize / 10);
+        }
+        assert_opaque_pixels(&planet_image(180), 19_000);
+        assert_opaque_pixels(&station_image(128), 1_000);
+        assert_opaque_pixels(&star_image(128), 3_000);
+        assert_opaque_pixels(&black_hole_image(128), 1_000);
+        assert_opaque_pixels(&glow_image(16), 100);
+        assert_opaque_pixels(&nebula_image(64), 1_000);
+        assert_opaque_pixels(&chief_image(128), 3_000);
+        assert_opaque_pixels(&meteorite_image(62, 0), 1_000);
+        assert_opaque_pixels(&meteorite_image(38, 1), 400);
+        assert_opaque_pixels(&meteorite_image(22, 2), 150);
+        let chief = chief_image(128);
+        assert!(matches!(chief.sampler, ImageSampler::Descriptor(_)));
+    }
 }

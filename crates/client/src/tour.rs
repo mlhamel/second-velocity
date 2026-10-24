@@ -4,9 +4,9 @@ use bevy::math::Vec2;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_protocol::{
-    BuyCommodity, ChiefEncounter, DockedAt, Heading, PlanetTag, Position, RequestLand,
-    RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind,
-    SystemMembership,
+    BuyCommodity, ChiefEncounter, DockableKind, DockableTag, DockedAt, Heading, PlanetTag,
+    Position, RequestLand, RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo,
+    ShipKind, StarTag, SystemMembership,
 };
 
 use crate::MyNetworkId;
@@ -49,6 +49,8 @@ impl Default for Tour {
 #[derive(Clone, Copy, PartialEq)]
 enum TourStage {
     ApproachEarth,
+    SunFlyby,
+    StationFlyby,
     JumpToAlpha,
     Duel,
     ApproachNewhaven,
@@ -80,6 +82,11 @@ type TourShips<'w, 's> = Query<
     ),
 >;
 
+type TourStars<'w, 's> = Query<'w, 's, (&'static StarTag, &'static Position)>;
+
+type TourStations<'w, 's> = Query<'w, 's, (&'static DockableTag, &'static Position)>;
+
+#[allow(clippy::too_many_arguments)]
 fn run_tour(
     my_id: Res<MyNetworkId>,
     mut commands: Commands,
@@ -87,6 +94,8 @@ fn run_tour(
     capture_dir: Res<CaptureDirectory>,
     mut exit: MessageWriter<AppExit>,
     ships: TourShips,
+    stars: TourStars,
+    stations: TourStations,
     planets: Query<(&PlanetTag, &Position)>,
 ) {
     let Some((_, position, heading, membership, docked, encounter)) = ships
@@ -122,13 +131,75 @@ fn run_tour(
                         .to_string_lossy()
                         .into_owned(),
                 );
-                tour.stage = TourStage::JumpToAlpha;
+                tour.stage = TourStage::SunFlyby;
                 tour.actioned = false;
                 tour.ticks = 0;
             } else {
                 let (turn, throttle) = steer(position.0, heading.0, earth.0);
                 commands.client_trigger(SetTurn(turn));
                 commands.client_trigger(SetThrottle(throttle));
+            }
+        }
+        TourStage::SunFlyby => {
+            let Some((_, star)) = stars.iter().find(|(tag, _)| tag.system == membership.0) else {
+                tour.stage = TourStage::StationFlyby;
+                tour.actioned = false;
+                tour.ticks = 0;
+                return;
+            };
+            let approach = star.0 + Vec2::new(380.0, -380.0);
+            if position.0.distance(approach) < 140.0 {
+                commands.client_trigger(SetWarp(false));
+                commands.client_trigger(SetThrottle(0.0));
+                request_capture(
+                    &mut commands,
+                    capture_dir
+                        .0
+                        .join("02-sun.png")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+                tour.stage = TourStage::StationFlyby;
+                tour.actioned = false;
+                tour.ticks = 0;
+            } else {
+                let (turn, throttle) = steer(position.0, heading.0, approach);
+                commands.client_trigger(SetTurn(turn));
+                commands.client_trigger(SetThrottle(throttle));
+                commands.client_trigger(SetWarp(true));
+            }
+        }
+        TourStage::StationFlyby => {
+            let Some((_, station)) = stations.iter().find(|(tag, _)| {
+                tag.kind == DockableKind::Station
+                    && tag.id == "lin-relay"
+                    && tag.system == membership.0
+            }) else {
+                tour.stage = TourStage::JumpToAlpha;
+                tour.actioned = false;
+                tour.ticks = 0;
+                return;
+            };
+            let approach = station.0 + Vec2::new(150.0, 110.0);
+            if position.0.distance(approach) < 90.0 {
+                commands.client_trigger(SetWarp(false));
+                commands.client_trigger(SetThrottle(0.0));
+                request_capture(
+                    &mut commands,
+                    capture_dir
+                        .0
+                        .join("03-station.png")
+                        .to_string_lossy()
+                        .into_owned(),
+                );
+                tour.stage = TourStage::JumpToAlpha;
+                tour.actioned = false;
+                tour.ticks = 0;
+            } else {
+                let (turn, throttle) = steer(position.0, heading.0, approach);
+                commands.client_trigger(SetTurn(turn));
+                commands.client_trigger(SetThrottle(throttle));
+                commands.client_trigger(SetWarp(true));
             }
         }
         TourStage::JumpToAlpha => {
@@ -168,7 +239,7 @@ fn run_tour(
                         &mut commands,
                         capture_dir
                             .0
-                            .join("02-combat.png")
+                            .join("04-combat.png")
                             .to_string_lossy()
                             .into_owned(),
                     );
@@ -210,7 +281,7 @@ fn run_tour(
                     &mut commands,
                     capture_dir
                         .0
-                        .join("04-chief-encounter.png")
+                        .join("05-chief-encounter.png")
                         .to_string_lossy()
                         .into_owned(),
                 );
@@ -234,7 +305,7 @@ fn run_tour(
                     &mut commands,
                     capture_dir
                         .0
-                        .join("03-docked-trade.png")
+                        .join("06-docked-trade.png")
                         .to_string_lossy()
                         .into_owned(),
                 );

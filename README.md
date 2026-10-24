@@ -19,16 +19,18 @@ cargo test --workspace                              # unit + end-to-end tests
 ## Screenshots
 
 ![Flight near Earth](docs/screenshots/01-flight-earth.png)
-![Duel with a Turncoat in Alpha Centauri](docs/screenshots/02-combat.png)
-![Docked and trading at Newhaven](docs/screenshots/03-docked-trade.png)
-![A contract briefing with Magistrate Kael at Newhaven](docs/screenshots/04-chief-encounter.png)
+![Skimming Sol's corona at the edge of the heat zone](docs/screenshots/02-sun.png)
+![Lin Relay station in orbit around Earth](docs/screenshots/03-station.png)
+![Duel with a Turncoat in Alpha Centauri](docs/screenshots/04-combat.png)
+![A contract briefing with Magistrate Kael at Newhaven](docs/screenshots/05-chief-encounter.png)
+![Docked and trading at Newhaven](docs/screenshots/06-docked-trade.png)
 
 Captured through the game's MCP `capture_screenshots` tool. Build both
 executables first with `cargo build -p evr-client -p evr-mcp`, then call
 `capture_screenshots` with no arguments on `evr-game`.
 
 The tool opens a separate desktop client, runs the automated tour, and refreshes
-all four images only after the complete tour succeeds. It requires a working
+all six images only after the complete tour succeeds. It requires a working
 desktop display, has a 180-second timeout, and does not change the MCP game
 session. Errors return the capture log path.
 

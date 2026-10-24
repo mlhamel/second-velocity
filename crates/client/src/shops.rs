@@ -1,3 +1,4 @@
+use bevy::image::{ImageLoaderSettings, ImageSampler};
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
@@ -12,6 +13,15 @@ use crate::{MyNetworkId, chief::ChiefPanelState, input::ClientContent};
 const CYAN: Color = Color::srgb(0.55, 1.0, 0.85);
 const DIM: Color = Color::srgb(0.42, 0.44, 0.5);
 const BODY: Color = Color::srgb(0.92, 0.93, 0.96);
+
+fn load_ui_texture(assets: &AssetServer, path: &str) -> Handle<Image> {
+    assets
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::linear();
+        })
+        .load(path.to_owned())
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum ShopTab {
@@ -682,7 +692,7 @@ fn icon_square(parent: &mut ChildSpawnerCommands, icon: &RowIcon, assets: &Asset
         BackgroundColor(SLOT),
     ));
     if let RowIcon::Asset(path) = icon {
-        entity.insert(ImageNode::new(assets.load(path.clone())));
+        entity.insert(ImageNode::new(load_ui_texture(assets, path)));
     }
 }
 

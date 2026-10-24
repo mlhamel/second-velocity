@@ -14,6 +14,10 @@ use std::net::SocketAddr;
 use std::time::SystemTime;
 
 use bevy::asset::AssetPlugin;
+use bevy::camera::Hdr;
+use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::image::ImagePlugin;
+use bevy::post_process::bloom::{Bloom, BloomCompositeMode, BloomPrefilter};
 use bevy::prelude::*;
 use bevy::window::WindowPlugin;
 use bevy_replicon::prelude::*;
@@ -84,6 +88,7 @@ fn main() {
                 file_path: "../../assets".to_owned(),
                 ..default()
             })
+            .set(ImagePlugin::default_nearest())
             .set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Second Velocity: The Living Galaxy".to_owned(),
@@ -201,5 +206,18 @@ fn step_embedded_server(mut server: NonSendMut<EmbeddedServer>) {
 }
 
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((
+        Camera2d,
+        Hdr,
+        Tonemapping::TonyMcMapface,
+        Bloom {
+            intensity: 0.35,
+            prefilter: BloomPrefilter {
+                threshold: 1.0,
+                threshold_softness: 0.3,
+            },
+            composite_mode: BloomCompositeMode::Additive,
+            ..Bloom::NATURAL
+        },
+    ));
 }

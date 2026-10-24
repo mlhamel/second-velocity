@@ -1,3 +1,4 @@
+use bevy::image::{ImageLoaderSettings, ImageSampler};
 use bevy::prelude::*;
 use evr_protocol::{ChiefEncounter, ChiefMood, ShipInfo};
 
@@ -10,6 +11,15 @@ const CYAN: Color = Color::srgb(0.55, 1.0, 0.85);
 const AMBER: Color = Color::srgb(1.0, 0.85, 0.5);
 const BODY: Color = Color::srgb(0.92, 0.93, 0.96);
 const DIM: Color = Color::srgb(0.5, 0.55, 0.65);
+
+fn load_portrait(assets: &AssetServer, path: &str) -> Handle<Image> {
+    assets
+        .load_builder()
+        .with_settings(|settings: &mut ImageLoaderSettings| {
+            settings.sampler = ImageSampler::linear();
+        })
+        .load(path.to_owned())
+}
 
 #[derive(Resource, Default)]
 pub struct ChiefPanelState {
@@ -223,7 +233,7 @@ fn sync_chief_panel(
 
         if let Ok(mut image_node) = images.get_mut(layout.portrait) {
             image_node.image = match (&encounter.portrait, textures.as_ref()) {
-                (Some(path), _) => asset_server.load(path.clone()),
+                (Some(path), _) => load_portrait(&asset_server, path),
                 (None, Some(tex)) => tex.chief.clone(),
                 (None, None) => Handle::default(),
             };

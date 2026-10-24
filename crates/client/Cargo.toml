@@ -29,6 +29,8 @@ bevy = { workspace = true, default-features = false, features = [
     "bevy_gilrs",
     "serialize",
     "png",
+    "tonemapping_luts",
+    "zstd_rust",
 ] }
 bevy_replicon.workspace = true
 bevy_replicon_renet2.workspace = true

@@ -4,12 +4,23 @@ use crate::textures::Textures;
 use bevy::color::Mix;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
+use evr_data::ShipSize;
 use evr_protocol::{
     BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, PlanetTag,
     Position, Projectile, ShipInfo, ShipKind, StarTag,
 };
 
 const FLASH_SECS: f32 = 0.18;
+const SPRITE_CANVAS: f32 = 128.0;
+
+fn ship_size_index(size: ShipSize) -> usize {
+    match size {
+        ShipSize::Light => 0,
+        ShipSize::Medium => 1,
+        ShipSize::Heavy => 2,
+        ShipSize::Capital => 3,
+    }
+}
 
 pub struct VisualsPlugin;
 
@@ -68,7 +79,7 @@ mod tests {
             .init_asset::<Image>()
             .insert_resource(ClientContent(content))
             .insert_resource(Textures {
-                ship: default(),
+                ships: std::array::from_fn(|_| default()),
                 planet: default(),
                 station: default(),
                 star: default(),
@@ -181,14 +192,21 @@ fn attach_ship_visuals(
 ) {
     for (entity, info, hull) in &changed {
         let ship_def = content.0.ship(&info.def_id);
-        let world_px = ship_def.map_or(44.0, |def| def.size.world_size());
-        let (image, base_color) = match ship_def.and_then(|def| def.sprite.clone()) {
-            Some(path) => (asset_server.load(path), Color::WHITE),
-            None => (textures.ship.clone(), kind_color(info.kind)),
+        let (world_px, sprite_px, fallback) = match ship_def {
+            Some(def) => (
+                def.size.world_size(),
+                SPRITE_CANVAS,
+                textures.ships[ship_size_index(def.size)].clone(),
+            ),
+            None => (48.0, 48.0, textures.ships[1].clone()),
+        };
+        let (image, base_color, custom_px) = match ship_def.and_then(|def| def.sprite.clone()) {
+            Some(path) => (asset_server.load(path), Color::WHITE, sprite_px),
+            None => (fallback, kind_color(info.kind), world_px),
         };
         let mut sprite = Sprite::from_image(image);
         sprite.color = base_color;
-        sprite.custom_size = Some(Vec2::splat(world_px));
+        sprite.custom_size = Some(Vec2::splat(custom_px));
         commands.entity(entity).insert((
             ShipVisual,
             sprite,
@@ -259,7 +277,7 @@ fn attach_station_visuals(
             .and_then(|s| s.sprite.clone());
         let image = path.map_or_else(|| textures.station.clone(), |path| asset_server.load(path));
         let mut sprite = Sprite::from_image(image);
-        sprite.custom_size = Some(Vec2::splat(port.radius * 2.2));
+        sprite.custom_size = Some(Vec2::splat(SPRITE_CANVAS));
         commands.entity(entity).insert((StationVisual, sprite));
     }
 }
@@ -290,9 +308,9 @@ fn attach_star_visuals(
             None => textures.star.clone(),
         };
         let mut sprite = Sprite::from_image(image);
-        sprite.color = Color::WHITE;
         // The texture's corona falloff reaches 48% of the sprite, so scale it
         // to make the visible halo match the 1.8x-radius heat-zone boundary.
+        sprite.color = Color::srgb(1.6, 1.5, 1.35);
         sprite.custom_size = Some(Vec2::splat(star.radius * 3.75));
         commands.entity(entity).insert((StarVisual, sprite));
     }
@@ -333,7 +351,8 @@ fn attach_projectile_visuals(
 ) {
     for entity in &added {
         let mut sprite = Sprite::from_image(textures.glow.clone());
-        sprite.custom_size = Some(Vec2::splat(9.0));
+        sprite.color = Color::srgb(1.9, 1.35, 0.6);
+        sprite.custom_size = Some(Vec2::splat(16.0));
         commands.entity(entity).insert((ProjectileVisual, sprite));
     }
 }
@@ -405,8 +424,8 @@ fn on_explosion(trigger: On<Explosion>, mut commands: Commands, textures: Res<Te
         let angle = index as f32 * std::f32::consts::FRAC_PI_6 + (index % 3) as f32 * 0.17;
         let speed = 60.0 + (index % 5) as f32 * 28.0;
         let mut sprite = Sprite::from_image(textures.glow.clone());
-        sprite.custom_size = Some(Vec2::splat(7.0));
-        sprite.color = Color::srgba(1.0, 0.6, 0.25, 0.9);
+        sprite.custom_size = Some(Vec2::splat(8.0));
+        sprite.color = Color::srgba(1.9, 1.1, 0.45, 0.95);
         commands.spawn((
             sprite,
             Transform::from_translation(origin.extend(5.0)),
@@ -428,7 +447,7 @@ fn debris_flight(
         debris.ttl -= dt;
         transform.translation += (debris.velocity * dt).extend(0.0);
         let alpha = (debris.ttl / 0.8).clamp(0.0, 1.0);
-        sprite.color = Color::srgba(1.0, 0.6, 0.25, alpha);
+        sprite.color = Color::srgba(1.9, 1.1, 0.45, alpha);
         if debris.ttl <= 0.0 {
             commands.entity(entity).despawn();
         }

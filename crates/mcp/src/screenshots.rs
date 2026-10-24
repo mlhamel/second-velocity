@@ -4,11 +4,13 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub const SCREENSHOTS: [&str; 4] = [
+pub const SCREENSHOTS: [&str; 6] = [
     "01-flight-earth.png",
-    "02-combat.png",
-    "03-docked-trade.png",
-    "04-chief-encounter.png",
+    "02-sun.png",
+    "03-station.png",
+    "04-combat.png",
+    "05-chief-encounter.png",
+    "06-docked-trade.png",
 ];
 
 static CAPTURE_LOCK: Mutex<()> = Mutex::new(());
@@ -142,7 +144,7 @@ mod tests {
             b"previous capture"
         );
         fs::write(staging.join(SCREENSHOTS[3]), PNG).unwrap();
-        assert_eq!(publish_captures(&staging, &destination).unwrap().len(), 4);
+        assert_eq!(publish_captures(&staging, &destination).unwrap().len(), 6);
         assert_eq!(fs::read(destination.join(SCREENSHOTS[0])).unwrap(), PNG);
         fs::remove_dir_all(root).unwrap();
     }
