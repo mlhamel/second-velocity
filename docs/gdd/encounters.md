@@ -54,6 +54,18 @@ Quests are standalone RON resources referenced from `content/manifest.ron`:
   referenced by a quest needs a master for offering or turn-in. Saved JSON
   keeps its legacy planet-named fields for compatibility.
 
+## Contract board (procedural repeatable jobs)
+
+Authored quests are finite; the contract board is not. Chiefs and masters
+offer generated contracts — delivery runs and pirate bounties, roughly half
+timed — when no authored quest is available at their port for that player.
+Every hosted port is guaranteed at least one contract; the board regenerates
+every five simulated minutes. Pay scales with distance and destination
+hazard (ADR 0016). Accepted contracts are flagged `procedural`: they behave
+exactly like authored quests but never enter the one-shot completed ledger,
+so the same port always has fresh work. Bounties credit the `"pirate"`
+wildcard, so any pirate kill in the target system counts.
+
 ## Controls & UI coexistence
 
 - The chief encounter opens as a side overlay panel when docking.

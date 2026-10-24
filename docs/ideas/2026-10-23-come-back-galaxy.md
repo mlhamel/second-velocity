@@ -77,13 +77,13 @@ quests, SQLite persistence, govt-zone PvP) but every loop dead-ends today:
       tolerance review of existing trade scenarios (credits asserts may need
       ranges); full battery + @review
 
-## Phase 3 — Contract board: never run out of things to do
+## Phase 3 — Contract board: never run out of things to do (done)
 
-- [ ] Procedurally generated repeatable contracts (delivery / bounty / timed)
+- [x] Procedurally generated repeatable contracts (delivery / bounty / timed)
       offered by chiefs alongside authored quests; refreshed on a timer
-- [ ] Session-sized 10–20 minute jobs; rewards scale with distance/hazard
-- [ ] Repeatable bounty hunting on pirates; later, on player pirates
-- [ ] Scenario: `contract-refresh.ron`; unit tests for generation determinism
+- [x] Session-sized 10–20 minute jobs; rewards scale with distance/hazard
+- [x] Repeatable bounty hunting on pirates; later, on player pirates
+- [x] Scenario: `contract-refresh.ron`; unit tests for generation determinism
       (seeded EncounterRng); full battery + @review
 
 ## Phase 4 — Factions and the scoreboard
