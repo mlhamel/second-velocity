@@ -254,6 +254,39 @@ impl Harness {
         self.client.world_mut().client_trigger(SetWarp(on));
     }
 
+    pub fn buy_ship(&mut self, ship: &str) {
+        self.client
+            .world_mut()
+            .client_trigger(evr_protocol::BuyShip {
+                ship: ship.to_owned(),
+            });
+    }
+
+    pub fn buy_outfit(&mut self, outfit: &str) {
+        self.client
+            .world_mut()
+            .client_trigger(evr_protocol::BuyOutfit {
+                outfit: outfit.to_owned(),
+            });
+    }
+
+    pub fn sell_outfit(&mut self, outfit: &str) {
+        self.client
+            .world_mut()
+            .client_trigger(evr_protocol::SellOutfit {
+                outfit: outfit.to_owned(),
+            });
+    }
+
+    /// Scenario-only fixture, intentionally not exposed as an MCP tool.
+    pub fn scenario_credits(&mut self, credits: u32) {
+        evr_server::gameplay::set_scenario_credits(
+            self.server.world_mut(),
+            EMBEDDED_CLIENT_ID as u64,
+            credits,
+        );
+    }
+
     pub fn respond(&mut self, choice: &str) {
         self.client.world_mut().client_trigger(RespondToEncounter {
             choice: choice.to_owned(),
@@ -294,6 +327,7 @@ impl Harness {
                     |(info, ship, membership, docked, account, encounter, quests)| {
                         (
                             info.name.clone(),
+                            info.def_id.clone(),
                             ship.0.clone(),
                             membership.0.clone(),
                             docked.cloned(),
@@ -305,7 +339,8 @@ impl Harness {
                 )
         };
 
-        let Some((ship_name, ship, system, docked, account, encounter, quests)) = my_ship else {
+        let Some((ship_name, ship_id, ship, system, docked, account, encounter, quests)) = my_ship
+        else {
             return serde_json::json!({
                 "tick": self.ticks,
                 "alive": false,
@@ -465,6 +500,43 @@ impl Harness {
                 .collect::<Vec<_>>()
         };
 
+        let equipped = {
+            let mut query = self
+                .server
+                .world_mut()
+                .query::<(&ShipInfo, &evr_protocol::EquippedOutfits)>();
+            query
+                .iter(self.server.world())
+                .find(|(info, _)| info.owner == Some(owner))
+                .map(|(_, equipped)| equipped.ids.clone())
+                .unwrap_or_default()
+        };
+        let (weapon_slots, shops) = {
+            let content = &self.server.world().resource::<Content>().0;
+            let slots = content.ship(&ship_id).map_or(0, |s| s.weapon_slots);
+            let port = docked
+                .as_ref()
+                .and_then(|d| content.dockable(&d.system, &d.location));
+            let yard = port.and_then(|p| p.shipyard()).map(|yard| yard.ships.iter().filter_map(|id| content.ship(id))
+                .map(|s| serde_json::json!({"id":s.id,"name":s.name,"price":s.price,"cargo":s.cargo,
+                    "max_shields":s.max_shields,"max_armor":s.max_armor,"fuel":s.fuel,"weapon_slots":s.weapon_slots})).collect::<Vec<_>>());
+            let outfitter = port.and_then(|p| p.outfitter()).map(|shop| shop.outfits.iter().filter_map(|id| content.outfit(id))
+                .map(|o| {
+                    let effect = match &o.kind {
+                        evr_data::OutfitKind::Weapon(w) => serde_json::json!({"kind":"weapon","damage":w.damage,"cooldown":w.cooldown}),
+                        evr_data::OutfitKind::ShieldGenerator { max_shields } => serde_json::json!({"kind":"shield","max_shields":max_shields}),
+                        evr_data::OutfitKind::FuelTank { fuel } => serde_json::json!({"kind":"fuel","fuel":fuel}),
+                        evr_data::OutfitKind::ArmorPlate { armor } => serde_json::json!({"kind":"armor","armor":armor}),
+                    };
+                    serde_json::json!({"id":o.id,"name":o.name,"price":o.price,"effect":effect,
+                        "installed":equipped.iter().filter(|id| **id == o.id).count()})
+                }).collect::<Vec<_>>());
+            (
+                slots,
+                serde_json::json!({"shipyard":yard,"outfitter":outfitter}),
+            )
+        };
+
         let stations = {
             let mut query = self
                 .server
@@ -522,6 +594,12 @@ impl Harness {
             })),
             "ship": {
                 "name": ship_name,
+                "def_id": ship_id,
+                "outfits": equipped,
+                "max_shields": ship.max_shields,
+                "max_armor": ship.max_armor,
+                "max_fuel": ship.max_fuel,
+                "weapon_slots": weapon_slots,
                 "position": [ship.position.x, ship.position.y],
                 "velocity": [ship.velocity.x, ship.velocity.y],
                 "heading": ship.rotation,
@@ -538,6 +616,7 @@ impl Harness {
             "meteorites": meteorites,
             "black_holes": black_holes,
             "market": market,
+            "shops": shops,
             "encounter": encounter_json,
             "quests": quests_json,
             "completed_quests": completed_quests,

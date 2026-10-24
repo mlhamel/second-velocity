@@ -10,4 +10,5 @@
         projectile_speed: 420.0,
         projectile_ttl: 1.2,
     )),
+    icon: Some("textures/outfits/light-blaster.png"),
 )

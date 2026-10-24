@@ -13,9 +13,9 @@ fn base_pack_loads() {
     assert_eq!(pack.manifest.id, "evr-base");
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
-    assert_eq!(pack.outfits.len(), 1);
+    assert_eq!(pack.outfits.len(), 5);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 10);
+    assert_eq!(pack.scenarios.len(), 12);
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");
@@ -95,7 +95,9 @@ fn base_pack_loads() {
     assert!(!trade_scenario.steps.is_empty());
 
     let blaster = pack.outfit("light-blaster").expect("light-blaster exists");
-    let evr_data::OutfitKind::Weapon(weapon) = &blaster.kind;
+    let evr_data::OutfitKind::Weapon(weapon) = &blaster.kind else {
+        panic!("light blaster must be a weapon")
+    };
     assert!(weapon.damage > 0.0);
 }
 
@@ -223,6 +225,33 @@ fn missing_sprite_asset_is_rejected() {
         r#"( id: "s", name: "S", description: "", price: 1, mass: 1.0, turn_rate: 1.0, acceleration: 1.0, max_speed: 1.0, max_shields: 1.0, max_armor: 1.0, fuel: 1, cargo: 1, weapon_slots: 1, sprite: Some("textures/ships/ghost.png") )"#,
     )
     .expect("ship must be writable");
+
+    let result = ContentPack::load_dir(&dir);
+    assert!(
+        matches!(
+            result,
+            Err(ContentError::UnknownReference { kind: "asset", .. })
+        ),
+        "expected missing-asset rejection, got {result:?}"
+    );
+
+    fs::remove_dir_all(&dir).expect("temp dir must be removable");
+}
+
+#[test]
+fn missing_outfit_icon_is_rejected() {
+    let dir = std::env::temp_dir().join(format!("evr-data-icon-test-{}", std::process::id()));
+    fs::create_dir_all(&dir).expect("temp dir must be creatable");
+    fs::write(
+        dir.join("manifest.ron"),
+        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: [], outfits: ["a.ron"] )"#,
+    )
+    .expect("manifest must be writable");
+    fs::write(
+        dir.join("a.ron"),
+        r#"( id: "o", name: "O", description: "", price: 1, mass: 1.0, kind: Weapon((damage: 1.0, cooldown: 1.0, projectile_speed: 1.0, projectile_ttl: 1.0)), icon: Some("textures/outfits/ghost.png") )"#,
+    )
+    .expect("outfit must be writable");
 
     let result = ContentPack::load_dir(&dir);
     assert!(

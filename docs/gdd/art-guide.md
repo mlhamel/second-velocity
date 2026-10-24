@@ -10,7 +10,8 @@ the names and sizes, and the game picks them up automatically.
 
 1. Content files in `content/` reference art by relative path:
    `sprite: Some("textures/ships/shuttle.png")` in a ship or planet
-   definition (paths are relative to `assets/`).
+   definition, or `icon: Some("textures/outfits/light-blaster.png")` on an
+   outfit / port commodity entry (paths are relative to `assets/`).
 2. Pack validation (`cargo test -p evr-data`) fails if a referenced file is
    missing — no dangling art references, ever.
 3. The client loads the PNG at spawn. If a definition has no `sprite` field,
@@ -26,6 +27,8 @@ the names and sizes, and the game picks them up automatically.
 | Station | `assets/textures/stations/docking-ring.png` | 128×128 | Transparent top-down docking ring; station content can select its own sprite |
 | Chief | `assets/textures/chiefs/<planet-id>.png` | 128×128 | Bust portrait on dark/transparent background; displayed in the docking encounter panel |
 | Station master | `assets/textures/chiefs/<station-id>.png` | 128×128 | Uses the same encounter panel and procedural fallback as chiefs |
+| Commodity | `assets/textures/commodities/<commodity-id>.png` | 128×128 | Cargo-container icon shown as a small square beside each Market row (~20 px) |
+| Outfit | `assets/textures/outfits/<outfit-id>.png` | 128×128 | Kind silhouette (weapon / shield bubble / fuel canister) shown beside each Outfitter row (~20 px) |
 
 - RGBA PNG, transparent background
 - Ship sprites render at ~44 px world size in natural colors (fallback untextured hulls use faction-tinted 24×12 rectangles); planets at `radius * 2`

@@ -8,14 +8,17 @@ use evr_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
 use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef};
 use evr_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
-    DockableKind, DockableTag, DockedAt, EncounterOption, Explosion, Fuel, HailShip, Heading, Hull,
-    LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice, PlanetTag, PlayerDied, Position,
-    Projectile, QuestTarget, RequestDock, RequestLand, RequestLiftOff, RespondToEncounter,
-    SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag,
-    SystemMembership,
+    DockableKind, DockableTag, DockedAt, EncounterOption, EquippedOutfits, Explosion, Fuel,
+    HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice,
+    PlanetTag, PlayerDied, Position, Projectile, QuestTarget, RequestDock, RequestLand,
+    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
+    ShipInfo, ShipKind, StarTag, SystemMembership,
 };
 
 use crate::Content;
+
+mod progression;
+use progression::*;
 
 pub const PLAYER_SYSTEM: &str = "sol";
 pub const PIRATE_SYSTEM: &str = "alpha-centauri";
@@ -178,6 +181,17 @@ pub fn encode_active_quests(quests: &ActiveQuests) -> String {
     serde_json::to_string(quests).unwrap_or_else(|_| "[]".to_owned())
 }
 
+/// Benchmark harness fixture. Not a network intent or MCP tool.
+pub fn set_scenario_credits(world: &mut World, owner: u64, credits: u32) {
+    let mut query = world.query::<(&Owner, &mut Wallet, &mut AccountState)>();
+    for (ship_owner, mut wallet, mut account) in query.iter_mut(world) {
+        if ship_owner.0 == owner {
+            wallet.0.credits = credits;
+            account.credits = credits;
+        }
+    }
+}
+
 #[derive(Component)]
 pub struct Ship(pub ShipState);
 
@@ -187,11 +201,13 @@ struct ShipSpec {
     cargo_capacity: u32,
 }
 
-#[derive(Component)]
-struct Blaster {
+struct EquippedWeapon {
     def: WeaponDef,
     state: WeaponState,
 }
+
+#[derive(Component, Default)]
+struct WeaponBanks(Vec<EquippedWeapon>);
 
 #[derive(Component, Default)]
 struct Control {
@@ -229,16 +245,15 @@ struct ProjectileMotion {
 #[derive(Component)]
 pub struct Aggro(pub u64);
 
-#[derive(Resource, Default)]
-struct PlayerRecord {
-    account: Option<Account>,
-    owner: Option<u64>,
-    name: Option<String>,
-    completed_quests: Vec<String>,
+struct Recovery {
+    state: crate::storage::PlayerState,
+    name: String,
+    remaining: f32,
+    needs_save: bool,
 }
 
 #[derive(Resource, Default)]
-struct PlayerRespawn(Option<f32>);
+struct PendingRecoveries(std::collections::HashMap<u64, Recovery>);
 
 #[derive(Resource)]
 struct SaveTimer(f32);
@@ -263,8 +278,7 @@ impl Plugin for GameplayPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StorageResource>()
             .init_resource::<SaveTimer>()
-            .init_resource::<PlayerRecord>()
-            .init_resource::<PlayerRespawn>()
+            .init_resource::<PendingRecoveries>()
             .init_resource::<PirateRespawn>()
             .init_resource::<EncounterRng>()
             .add_observer(on_set_throttle)
@@ -273,6 +287,9 @@ impl Plugin for GameplayPlugin {
             .add_observer(on_request_land)
             .add_observer(on_request_dock)
             .add_observer(on_request_lift_off)
+            .add_observer(on_buy_ship)
+            .add_observer(on_buy_outfit)
+            .add_observer(on_sell_outfit)
             .add_observer(on_buy_commodity)
             .add_observer(on_sell_commodity)
             .add_observer(on_set_warp)
@@ -321,12 +338,19 @@ pub fn spawn_ship(
     let def = pack.ship(ship_id).expect("ship must exist in pack");
     let sys = pack.system(system).expect("system must exist in pack");
     let base = Vec2::new(sys.position.0, sys.position.1);
-    let mut ship_state = ShipState::new(def.max_shields, def.max_armor, def.fuel as f32);
+    let stats = pack
+        .loadout_stats(ship_id, &def.default_outfits)
+        .expect("validated default loadout");
+    let mut ship_state = ShipState::new(stats.max_shields, stats.max_armor, stats.max_fuel);
     ship_state.position = base + offset;
 
     let mut entity = commands.spawn((
         Replicated,
         Ship(ship_state),
+        EquippedOutfits {
+            ids: def.default_outfits.clone(),
+        },
+        weapon_banks(pack, &def.default_outfits),
         ShipSpec {
             flight: FlightModel {
                 turn_rate: def.turn_rate,
@@ -343,14 +367,14 @@ pub fn spawn_ship(
         Position(base + offset),
         Heading(0.0),
         Hull {
-            shields: def.max_shields,
-            max_shields: def.max_shields,
-            armor: def.max_armor,
-            max_armor: def.max_armor,
+            shields: stats.max_shields,
+            max_shields: stats.max_shields,
+            armor: stats.max_armor,
+            max_armor: stats.max_armor,
         },
         Fuel {
-            current: def.fuel as f32,
-            max: def.fuel as f32,
+            current: stats.max_fuel,
+            max: stats.max_fuel,
         },
         ShipInfo {
             def_id: def.id.clone(),
@@ -370,21 +394,6 @@ pub fn spawn_ship(
     } else {
         entity.insert(Npc);
     }
-    if let Some(outfit) = def
-        .default_outfits
-        .first()
-        .and_then(|outfit_id| pack.outfit(outfit_id))
-    {
-        match &outfit.kind {
-            OutfitKind::Weapon(weapon) => {
-                entity.insert(Blaster {
-                    def: weapon.clone(),
-                    state: WeaponState::new(),
-                });
-            }
-        }
-    }
-
     entity.id()
 }
 
@@ -891,6 +900,7 @@ fn notice(commands: &mut Commands, client: ClientId, text: impl Into<String>) {
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 fn on_login_request(
     trigger: On<FromClient<LoginRequest>>,
     mut commands: Commands,
@@ -899,101 +909,76 @@ fn on_login_request(
     storage: Res<StorageResource>,
     logged_in: Query<&Owner, With<PlayerShip>>,
     active_names: Query<&PlayerName>,
+    mut pending: ResMut<PendingRecoveries>,
 ) {
     let username = trigger.event().username.clone();
-    let password = trigger.event().password.clone();
-
     let owner = raw_id(trigger.client_id, &clients);
-    info!("server: login request for '{username}' from client owner={owner}");
-    if logged_in.iter().any(|existing| existing.0 == owner) {
+    let client = trigger.client_id;
+    if logged_in.iter().any(|o| o.0 == owner) {
         return;
     }
-    if active_names.iter().any(|n| n.0 == username) {
-        commands.server_trigger(ToClients {
-            targets: SendTargets::Single(trigger.client_id),
+    let result = (|| -> Result<crate::PlayerState, String> {
+        if active_names.iter().any(|name| name.0 == username) {
+            return Err("Already logged in.".into());
+        }
+        let db = storage
+            .storage
+            .as_ref()
+            .ok_or("Persistent accounts are unavailable.")?;
+        let mut saved = match db.verify_login(&username, &trigger.event().password) {
+            Ok(Some(state)) => state,
+            Ok(None) => db
+                .create_account(&username, &trigger.event().password)
+                .map_err(|_| "Account creation failed.")?,
+            Err(_) => return Err("Login failed.".into()),
+        };
+        if let Some(recovery) = pending.0.values().find(|r| r.name == username) {
+            saved = recovery.state.clone();
+            db.save_player(&username, &saved)
+                .map_err(|_| "Recovery could not be saved; retry login.")?;
+        }
+        restore_ship(&content.0, &saved)?;
+        Ok(saved)
+    })();
+    match result {
+        Err(message) => commands.server_trigger(ToClients {
+            targets: SendTargets::Single(client),
             message: LoginResponse {
                 success: false,
-                message: "Already logged in.".to_owned(),
+                message,
                 credits: 0,
-                cargo: Vec::new(),
+                cargo: vec![],
                 system: String::new(),
             },
-        });
-        return;
-    }
-    let Some(storage) = storage.storage.as_ref() else {
-        return;
-    };
-    let result = match storage.verify_login(&username, &password) {
-        Ok(Some(state)) => (true, "Welcome back.".to_owned(), Some(state)),
-        Ok(None) => match storage.create_account(&username, &password) {
-            Ok(state) => (true, "Account created.".to_owned(), Some(state)),
-            Err(_) => (false, "Username taken.".to_owned(), None),
-        },
-        Err(crate::storage::StorageError::NotFound) => {
-            (false, "Invalid credentials.".to_owned(), None)
-        }
-        Err(_) => (false, "Storage error.".to_owned(), None),
-    };
-
-    let (success, message, state) = result;
-    info!("server: login result for '{username}' (owner={owner}): success={success} ({message})");
-    let client = trigger.client_id;
-    commands.server_trigger(ToClients {
-        targets: SendTargets::Single(client),
-        message: LoginResponse {
-            success,
-            message,
-            credits: state.as_ref().map_or(0, |s| s.credits),
-            cargo: state.as_ref().map_or_default(|s| s.cargo.clone()),
-            system: state
-                .as_ref()
-                .map_or_else(|| PLAYER_SYSTEM.to_owned(), |s| s.system.clone()),
-        },
-    });
-
-    let Some(state) = state else {
-        return;
-    };
-    let ship_def = content.0.ship(&state.ship_id).cloned().unwrap_or_else(|| {
-        content
-            .0
-            .ship(PLAYER_SHIP)
-            .expect("player ship must exist")
-            .clone()
-    });
-    let capacity = ship_def.cargo;
-    let spawn_system = state.system.clone();
-    let spawn_position = Vec2::new(state.position.0, state.position.1);
-    let restored_quests = parse_active_quests(&state.active_quests_json);
-
-    let ship_entity = spawn_ship(
-        &mut commands,
-        &content.0,
-        &ship_def.id,
-        ShipKind::Player,
-        Some(owner),
-        &spawn_system,
-        spawn_position,
-    );
-    let client_entity = trigger
-        .client_id
-        .entity()
-        .expect("login must come from a connected client");
-    commands.entity(ship_entity).insert((
-        Wallet(Account {
-            credits: state.credits,
-            cargo: state.cargo.clone(),
         }),
-        AccountState {
-            credits: state.credits,
-            cargo: state.cargo.clone(),
-            cargo_capacity: capacity,
-        },
-        restored_quests,
-        ClientRef(client_entity),
-        PlayerName(username.clone()),
-    ));
+        Ok(saved) => {
+            let Some(entity) = client.entity() else {
+                return;
+            };
+            if let Err(error) = spawn_saved_player(
+                &mut commands,
+                &content.0,
+                owner,
+                entity,
+                username.clone(),
+                &saved,
+            ) {
+                notice(&mut commands, client, error);
+                return;
+            }
+            pending.0.retain(|_, recovery| recovery.name != username);
+            commands.server_trigger(ToClients {
+                targets: SendTargets::Single(client),
+                message: LoginResponse {
+                    success: true,
+                    message: "Welcome aboard.".into(),
+                    credits: saved.credits,
+                    cargo: saved.cargo,
+                    system: saved.system,
+                },
+            });
+        }
+    }
 }
 
 fn authorize_clients(
@@ -1001,7 +986,7 @@ fn authorize_clients(
     content: Res<Content>,
     newly_authorized: Query<(Entity, &NetworkId), Added<AuthorizedClient>>,
     players: Query<(Entity, &Owner), With<PlayerShip>>,
-    record: Res<PlayerRecord>,
+    pending: Res<PendingRecoveries>,
     storage: Res<StorageResource>,
 ) {
     for (client_entity, network_id) in &newly_authorized {
@@ -1016,7 +1001,7 @@ fn authorize_clients(
             commands
                 .entity(player_entity)
                 .insert(ClientRef(client_entity));
-        } else if record.owner != Some(owner) {
+        } else if !pending.0.contains_key(&owner) {
             info!("server: spawning default player ship for authorized client owner={owner}");
             spawn_default_player(&mut commands, &content, owner, client_entity);
         }
@@ -1434,33 +1419,35 @@ type FiringShips<'w, 's> = Query<
         &'static Owner,
         &'static ShipInfo,
         &'static Ship,
-        &'static mut Blaster,
+        &'static mut WeaponBanks,
     ),
     Without<DockedAt>,
 >;
 
 fn fire_weapons(mut commands: Commands, time: Res<Time>, mut ships: FiringShips) {
     let dt = time.delta_secs();
-    for (entity, control, owner, info, ship, mut blaster) in &mut ships {
-        blaster.state.tick(dt);
-        let cooldown = blaster.def.cooldown;
-        if control.firing && blaster.state.try_fire(cooldown) {
-            let direction = ship.0.heading();
-            commands.spawn((
-                Replicated,
-                Projectile {
-                    damage: blaster.def.damage,
-                    ttl: blaster.def.projectile_ttl,
-                    owner: owner.0,
-                },
-                ProjectileMotion {
-                    speed: blaster.def.projectile_speed,
-                    shooter_entity: Some(entity),
-                    shooter_kind: info.kind,
-                },
-                Position(ship.0.position + direction * SHIP_RADIUS),
-                Heading(ship.0.rotation),
-            ));
+    for (entity, control, owner, info, ship, mut banks) in &mut ships {
+        for blaster in &mut banks.0 {
+            blaster.state.tick(dt);
+            let cooldown = blaster.def.cooldown;
+            if control.firing && blaster.state.try_fire(cooldown) {
+                let direction = ship.0.heading();
+                commands.spawn((
+                    Replicated,
+                    Projectile {
+                        damage: blaster.def.damage,
+                        ttl: blaster.def.projectile_ttl,
+                        owner: owner.0,
+                    },
+                    ProjectileMotion {
+                        speed: blaster.def.projectile_speed,
+                        shooter_entity: Some(entity),
+                        shooter_kind: info.kind,
+                    },
+                    Position(ship.0.position + direction * SHIP_RADIUS),
+                    Heading(ship.0.rotation),
+                ));
+            }
         }
     }
 }
@@ -2014,21 +2001,22 @@ type DyingShips<'w, 's> = Query<
         Option<&'static ClientRef>,
         Option<&'static Wallet>,
         Option<&'static ActiveQuests>,
+        &'static EquippedOutfits,
     ),
 >;
 
 #[allow(clippy::too_many_arguments)]
 fn ship_deaths(
     mut commands: Commands,
-    mut record: ResMut<PlayerRecord>,
-    mut player_respawn: ResMut<PlayerRespawn>,
+    mut pending: ResMut<PendingRecoveries>,
+    content: Res<Content>,
     mut pirate_respawn: ResMut<PirateRespawn>,
     ships: DyingShips,
     names: Query<&PlayerName>,
     storage: Res<StorageResource>,
     clients: Query<Entity, With<ConnectedClient>>,
 ) {
-    for (entity, ship, info, membership, owner, client_ref, wallet, active_quests) in &ships {
+    for (entity, ship, info, membership, owner, client_ref, wallet, quests, equipped) in &ships {
         if !ship.0.is_destroyed() {
             continue;
         }
@@ -2036,62 +2024,91 @@ fn ship_deaths(
             position: (ship.0.position.x, ship.0.position.y),
             system: membership.0.clone(),
         };
-        for client_entity in &clients {
+        for client in &clients {
             commands.server_trigger(ToClients {
-                targets: SendTargets::Single(ClientId::Client(client_entity)),
+                targets: SendTargets::Single(ClientId::Client(client)),
                 message: explosion.clone(),
             });
         }
-        match info.kind {
-            ShipKind::Player => {
-                if let Some(wallet) = wallet {
-                    record.account = Some(Account::new(wallet.0.credits));
-                }
-                let completed = active_quests
-                    .map(|q| q.completed.clone())
-                    .unwrap_or_default();
-                record.completed_quests = completed.clone();
-                if let Ok(name) = names.get(entity) {
-                    record.name = Some(name.0.clone());
-                    if let Some(storage) = storage.storage.as_ref() {
-                        let cleared = ActiveQuests {
-                            quests: Vec::new(),
-                            completed,
-                        };
-                        let _ = storage.save_player(
-                            &name.0,
-                            &crate::storage::PlayerState {
-                                credits: wallet.map_or(0, |w| w.0.credits),
-                                cargo: Vec::new(),
-                                ship_id: PLAYER_SHIP.to_owned(),
-                                system: PLAYER_SYSTEM.to_owned(),
-                                position: (0.0, 0.0),
-                                fuel: 0.0,
-                                shields: 0.0,
-                                armor: 0.0,
-                                active_quests_json: encode_active_quests(&cleared),
-                            },
+        if info.kind == ShipKind::Player {
+            let equipped_ids: Vec<String> = equipped
+                .ids
+                .iter()
+                .filter(|id| content.0.outfit(id).is_some())
+                .cloned()
+                .collect();
+            let (hull_id, ids, stats) = match content.0.loadout_stats(&info.def_id, &equipped_ids) {
+                Ok(stats) => (info.def_id.clone(), equipped_ids, stats),
+                Err(error) => {
+                    warn!(
+                        "owner={}: recovery downgrades to the starter hull: {error}",
+                        owner.0
+                    );
+                    if let Some(client) = client_ref {
+                        notice(
+                            &mut commands,
+                            ClientId::Client(client.0),
+                            "The registry no longer lists your hull. Recovery issues a factory shuttle.",
                         );
                     }
+                    let def = content
+                        .0
+                        .ship(PLAYER_SHIP)
+                        .expect("player ship must exist in pack");
+                    let factory = def.default_outfits.clone();
+                    let stats = content
+                        .0
+                        .loadout_stats(PLAYER_SHIP, &factory)
+                        .expect("validated default loadout");
+                    (PLAYER_SHIP.to_owned(), factory, stats)
                 }
-                record.owner = Some(owner.0);
-                player_respawn.0 = Some(PLAYER_RESPAWN_SECS);
-                if let Some(client_ref) = client_ref {
-                    commands.server_trigger(ToClients {
-                        targets: SendTargets::Single(ClientId::Client(client_ref.0)),
-                        message: PlayerDied,
-                    });
-                }
-                commands.entity(entity).despawn();
+            };
+            let completed = quests.map(|q| q.completed.clone()).unwrap_or_default();
+            let saved = crate::PlayerState {
+                credits: wallet.map_or(STARTING_CREDITS, |w| w.0.credits),
+                cargo: vec![],
+                ship_id: hull_id,
+                system: PLAYER_SYSTEM.into(),
+                position: (0.0, 0.0),
+                fuel: stats.max_fuel,
+                shields: stats.max_shields,
+                armor: stats.max_armor,
+                active_quests_json: encode_active_quests(&ActiveQuests {
+                    quests: vec![],
+                    completed,
+                }),
+                equipped_outfits: Some(ids),
+            };
+            let name = names
+                .get(entity)
+                .map(|n| n.0.clone())
+                .unwrap_or_else(|_| "pilot".into());
+            let needs_save = storage
+                .storage
+                .as_ref()
+                .is_some_and(|db| db.save_player(&name, &saved).is_err());
+            if needs_save {
+                warn!("recovery for owner={} will retry persistence", owner.0);
             }
-            ShipKind::Pirate => {
-                pirate_respawn.0 = Some(PIRATE_RESPAWN_SECS);
-                commands.entity(entity).despawn();
+            pending.0.insert(
+                owner.0,
+                Recovery {
+                    state: saved,
+                    name,
+                    remaining: PLAYER_RESPAWN_SECS,
+                    needs_save,
+                },
+            );
+            if let Some(client) = client_ref {
+                commands.server_trigger(ToClients {
+                    targets: SendTargets::Single(ClientId::Client(client.0)),
+                    message: PlayerDied,
+                });
             }
-            ShipKind::Police | ShipKind::Merchant | ShipKind::Defender | ShipKind::Explorer => {
-                commands.entity(entity).despawn();
-            }
+        } else if info.kind == ShipKind::Pirate {
+            pirate_respawn.0 = Some(PIRATE_RESPAWN_SECS);
         }
+        commands.entity(entity).despawn();
     }
 }
 
@@ -2099,69 +2116,53 @@ fn respawn_players(
     mut commands: Commands,
     time: Res<Time>,
     content: Res<Content>,
-    mut record: ResMut<PlayerRecord>,
-    mut respawn: ResMut<PlayerRespawn>,
+    mut pending: ResMut<PendingRecoveries>,
     players: Query<&Owner, With<PlayerShip>>,
     clients: Query<(Entity, &NetworkId), With<ConnectedClient>>,
+    storage: Res<StorageResource>,
 ) {
-    let Some(timer) = respawn.0.as_mut() else {
-        return;
-    };
-    *timer -= time.delta_secs();
-    if *timer > 0.0 {
-        return;
+    let mut finished = Vec::new();
+    for (&owner, recovery) in &mut pending.0 {
+        recovery.remaining -= time.delta_secs();
+        if recovery.remaining > 0.0 {
+            continue;
+        }
+        if players.iter().any(|o| o.0 == owner) {
+            finished.push(owner);
+            continue;
+        }
+        if recovery.needs_save {
+            let saved = storage
+                .storage
+                .as_ref()
+                .is_none_or(|db| db.save_player(&recovery.name, &recovery.state).is_ok());
+            if !saved {
+                recovery.remaining = 0.5;
+                continue;
+            }
+            recovery.needs_save = false;
+        }
+        let Some((client, _)) = clients.iter().find(|(_, id)| id.get() == owner) else {
+            continue;
+        };
+        match spawn_saved_player(
+            &mut commands,
+            &content.0,
+            owner,
+            client,
+            recovery.name.clone(),
+            &recovery.state,
+        ) {
+            Ok(_) => finished.push(owner),
+            Err(error) => {
+                warn!("recovery failed for owner={owner}: {error}");
+                recovery.remaining = 0.5;
+            }
+        }
     }
-    respawn.0 = None;
-
-    let Some(owner) = record.owner else {
-        return;
-    };
-    if players.iter().any(|existing| existing.0 == owner) {
-        record.owner = None;
-        record.account = None;
-        record.name = None;
-        record.completed_quests.clear();
-        return;
+    for owner in finished {
+        pending.0.remove(&owner);
     }
-    let Some((client_entity, _)) = clients.iter().find(|(_, id)| id.get() == owner) else {
-        respawn.0 = Some(0.5);
-        return;
-    };
-    record.owner = None;
-    let account = record
-        .account
-        .take()
-        .unwrap_or_else(|| Account::new(STARTING_CREDITS));
-    let completed = std::mem::take(&mut record.completed_quests);
-    let capacity = content
-        .0
-        .ship(PLAYER_SHIP)
-        .expect("player ship must exist in pack")
-        .cargo;
-
-    let ship = spawn_ship(
-        &mut commands,
-        &content.0,
-        PLAYER_SHIP,
-        ShipKind::Player,
-        Some(owner),
-        PLAYER_SYSTEM,
-        Vec2::ZERO,
-    );
-    commands.entity(ship).insert((
-        Wallet(account.clone()),
-        PlayerName(record.name.clone().unwrap_or_default()),
-        AccountState {
-            credits: account.credits,
-            cargo: account.cargo.clone(),
-            cargo_capacity: capacity,
-        },
-        ActiveQuests {
-            quests: Vec::new(),
-            completed,
-        },
-        ClientRef(client_entity),
-    ));
 }
 
 fn respawn_pirates(
@@ -2250,7 +2251,8 @@ type AutoSavePlayers<'w, 's> = Query<
         &'static Wallet,
         &'static Ship,
         &'static SystemMembership,
-        &'static Fuel,
+        &'static ShipInfo,
+        &'static EquippedOutfits,
         Option<&'static ActiveQuests>,
     ),
     With<PlayerShip>,
@@ -2260,35 +2262,33 @@ fn auto_save(
     time: Res<Time>,
     mut timer: ResMut<SaveTimer>,
     storage: Res<StorageResource>,
-    content: Res<Content>,
     players: AutoSavePlayers,
 ) {
-    const SAVE_INTERVAL: f32 = 10.0;
     timer.0 += time.delta_secs();
-    if timer.0 < SAVE_INTERVAL {
+    if timer.0 < 10.0 {
         return;
     }
     timer.0 = 0.0;
-
-    let Some(storage) = storage.storage.as_ref() else {
+    let Some(db) = storage.storage.as_ref() else {
         return;
     };
-
-    for (name, wallet, ship, membership, fuel, quests) in &players {
-        let state = crate::storage::PlayerState {
+    for (name, wallet, ship, membership, info, equipped, quests) in &players {
+        let state = crate::PlayerState {
             credits: wallet.0.credits,
             cargo: wallet.0.cargo.clone(),
-            ship_id: PLAYER_SHIP.to_owned(),
+            ship_id: info.def_id.clone(),
             system: membership.0.clone(),
             position: (ship.0.position.x, ship.0.position.y),
-            fuel: fuel.current,
+            fuel: ship.0.fuel,
             shields: ship.0.shields,
             armor: ship.0.armor,
-            active_quests_json: quests.map_or_else(|| "[]".to_owned(), encode_active_quests),
+            active_quests_json: quests.map_or_else(|| "[]".into(), encode_active_quests),
+            equipped_outfits: Some(equipped.ids.clone()),
         };
-        let _ = storage.save_player(&name.0, &state);
+        if let Err(error) = db.save_player(&name.0, &state) {
+            warn!("autosave failed: {error}");
+        }
     }
-    let _ = &content;
 }
 
 type DockingShips<'w, 's> = Query<
@@ -3339,6 +3339,7 @@ mod tests {
         EMBEDDED_CLIENT_ID, PROTOCOL_ID, TickMode, attach_memory, attach_udp, build_server_app,
     };
 
+    mod progression;
     mod stations;
 
     struct Harness {

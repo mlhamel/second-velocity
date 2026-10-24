@@ -11,9 +11,9 @@
             name: "The Night Market",
             description: "Everything is for sale. The exit fee is negotiable at gunpoint.",
             commodities: [
-                (id: "weapons", price: 30),
-                (id: "machinery", price: 32),
-                (id: "food", price: 16),
+                (id: "weapons", price: 30, icon: Some("textures/commodities/weapons.png")),
+                (id: "machinery", price: 32, icon: Some("textures/commodities/machinery.png")),
+                (id: "food", price: 16, icon: Some("textures/commodities/food.png")),
             ],
         ),
     ],

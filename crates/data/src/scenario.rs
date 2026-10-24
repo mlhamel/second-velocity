@@ -15,6 +15,9 @@ pub struct ScenarioDef {
     pub description: String,
     #[serde(default)]
     pub encounter_seed: Option<u64>,
+    /// Benchmark-only starting-balance fixture; never a game/MCP cheat intent.
+    #[serde(default)]
+    pub starting_credits: Option<u32>,
     #[serde(default = "default_max_ticks")]
     pub max_ticks: u64,
     pub steps: Vec<ScenarioStep>,
@@ -22,6 +25,26 @@ pub struct ScenarioDef {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub enum ScenarioStep {
+    BuyShip {
+        ship: String,
+    },
+    BuyOutfit {
+        outfit: String,
+    },
+    SellOutfit {
+        outfit: String,
+    },
+    AssertShip(String),
+    AssertLoadout {
+        outfits: Vec<String>,
+    },
+    AssertShipStats {
+        max_shields: f32,
+        max_armor: f32,
+        max_fuel: f32,
+        cargo: u32,
+        weapon_slots: u32,
+    },
     SetFlight {
         throttle: f32,
         turn: f32,

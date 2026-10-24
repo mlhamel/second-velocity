@@ -1,0 +1,9 @@
+(
+    id: "aux-fuel-tank",
+    name: "Auxiliary Fuel Tank",
+    description: "Fifty more units of capacity. Fuel sold separately, as the clerk will remind you.",
+    price: 900,
+    mass: 3.0,
+    kind: FuelTank(fuel: 50.0),
+    icon: Some("textures/outfits/aux-fuel-tank.png"),
+)

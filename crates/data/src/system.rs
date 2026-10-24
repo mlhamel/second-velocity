@@ -24,6 +24,16 @@ pub struct SystemDef {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct ShipyardDef {
+    pub ships: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OutfitterDef {
+    pub outfits: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct BlackHoleDef {
     pub position: (f32, f32),
     pub radius: f32,
@@ -54,6 +64,10 @@ pub struct StationDef {
     pub master: Option<ChiefDef>,
     #[serde(default)]
     pub commodities: Vec<CommodityPrice>,
+    #[serde(default)]
+    pub shipyard: Option<ShipyardDef>,
+    #[serde(default)]
+    pub outfitter: Option<OutfitterDef>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -77,6 +91,18 @@ pub enum DockableDef<'a> {
 }
 
 impl<'a> DockableDef<'a> {
+    pub fn shipyard(self) -> Option<&'a ShipyardDef> {
+        match self {
+            Self::Planet(p) => p.shipyard.as_ref(),
+            Self::Station(s) => s.shipyard.as_ref(),
+        }
+    }
+    pub fn outfitter(self) -> Option<&'a OutfitterDef> {
+        match self {
+            Self::Planet(p) => p.outfitter.as_ref(),
+            Self::Station(s) => s.outfitter.as_ref(),
+        }
+    }
     pub fn name(self) -> &'a str {
         match self {
             Self::Planet(p) => &p.name,
@@ -160,6 +186,10 @@ pub struct PlanetDef {
     #[serde(default)]
     pub chief: Option<ChiefDef>,
     pub commodities: Vec<CommodityPrice>,
+    #[serde(default)]
+    pub shipyard: Option<ShipyardDef>,
+    #[serde(default)]
+    pub outfitter: Option<OutfitterDef>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -177,4 +207,6 @@ pub struct ChiefDef {
 pub struct CommodityPrice {
     pub id: String,
     pub price: u32,
+    #[serde(default)]
+    pub icon: Option<String>,
 }

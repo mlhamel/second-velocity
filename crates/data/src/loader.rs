@@ -51,7 +51,7 @@ impl ContentPack {
         }
 
         Self::validate(&ships, &systems, &outfits, &quests, &scenarios)?;
-        Self::validate_sprites(root, &ships, &systems)?;
+        Self::validate_assets(root, &ships, &systems, &outfits)?;
 
         Ok(Self {
             manifest,
@@ -63,10 +63,11 @@ impl ContentPack {
         })
     }
 
-    fn validate_sprites(
+    fn validate_assets(
         root: &Path,
         ships: &[ShipDef],
         systems: &[SystemDef],
+        outfits: &[OutfitDef],
     ) -> Result<(), ContentError> {
         let assets_root = root.parent().unwrap_or(root).join("assets");
         for ship in ships {
@@ -74,10 +75,20 @@ impl ContentPack {
                 validate_asset(&assets_root, sprite)?;
             }
         }
+        for outfit in outfits {
+            if let Some(icon) = &outfit.icon {
+                validate_asset(&assets_root, icon)?;
+            }
+        }
         for system in systems {
             for planet in &system.planets {
                 if let Some(sprite) = &planet.sprite {
                     validate_asset(&assets_root, sprite)?;
+                }
+                for commodity in &planet.commodities {
+                    if let Some(icon) = &commodity.icon {
+                        validate_asset(&assets_root, icon)?;
+                    }
                 }
                 if let Some(chief) = &planet.chief
                     && let Some(portrait) = &chief.portrait
@@ -98,6 +109,11 @@ impl ContentPack {
             for station in &system.stations {
                 if let Some(sprite) = &station.sprite {
                     validate_asset(&assets_root, sprite)?;
+                }
+                for commodity in &station.commodities {
+                    if let Some(icon) = &commodity.icon {
+                        validate_asset(&assets_root, icon)?;
+                    }
                 }
                 if let Some(portrait) = station
                     .master
@@ -153,15 +169,69 @@ impl ContentPack {
 
         let outfit_ids: std::collections::HashSet<_> =
             outfits.iter().map(|o| o.id.clone()).collect();
+        for outfit in outfits {
+            let positive = |value: f32| value.is_finite() && value > 0.0;
+            let valid = outfit.price > 0
+                && outfit.mass.is_finite()
+                && outfit.mass >= 0.0
+                && match &outfit.kind {
+                    crate::OutfitKind::Weapon(w) => {
+                        [w.damage, w.cooldown, w.projectile_speed, w.projectile_ttl]
+                            .into_iter()
+                            .all(positive)
+                    }
+                    crate::OutfitKind::ShieldGenerator { max_shields } => positive(*max_shields),
+                    crate::OutfitKind::FuelTank { fuel } => positive(*fuel),
+                    crate::OutfitKind::ArmorPlate { armor } => positive(*armor),
+                };
+            if !valid {
+                return Err(ContentError::UnknownReference {
+                    kind: "outfit config",
+                    id: outfit.id.clone(),
+                });
+            }
+        }
         for ship in ships {
+            if ship.price == 0 {
+                return Err(ContentError::UnknownReference {
+                    kind: "ship price",
+                    id: ship.id.clone(),
+                });
+            }
             for outfit in &ship.default_outfits {
                 validate_reference("outfit", outfit, &outfit_ids)?;
             }
+            crate::loadout::stats_for(ship, outfits, &ship.default_outfits).map_err(|_| {
+                ContentError::UnknownReference {
+                    kind: "ship loadout",
+                    id: ship.id.clone(),
+                }
+            })?;
         }
 
         let system_ids: std::collections::HashSet<_> =
             systems.iter().map(|s| s.id.clone()).collect();
+        let ship_ids = ships.iter().map(|s| s.id.clone()).collect();
         for system in systems {
+            for port in system
+                .planets
+                .iter()
+                .map(DockableDef::Planet)
+                .chain(system.stations.iter().map(DockableDef::Station))
+            {
+                if let Some(yard) = port.shipyard() {
+                    validate_ids("shipyard stock", yard.ships.iter().cloned())?;
+                    for id in &yard.ships {
+                        validate_reference("shipyard ship", id, &ship_ids)?;
+                    }
+                }
+                if let Some(shop) = port.outfitter() {
+                    validate_ids("outfitter stock", shop.outfits.iter().cloned())?;
+                    for id in &shop.outfits {
+                        validate_reference("outfitter outfit", id, &outfit_ids)?;
+                    }
+                }
+            }
             validate_ids(
                 "docking location",
                 system
@@ -317,6 +387,17 @@ impl ContentPack {
         for scenario in scenarios {
             for step in &scenario.steps {
                 match step {
+                    ScenarioStep::BuyShip { ship } | ScenarioStep::AssertShip(ship) => {
+                        validate_reference("scenario ship", ship, &ship_ids)?;
+                    }
+                    ScenarioStep::BuyOutfit { outfit } | ScenarioStep::SellOutfit { outfit } => {
+                        validate_reference("scenario outfit", outfit, &outfit_ids)?;
+                    }
+                    ScenarioStep::AssertLoadout { outfits } => {
+                        for id in outfits {
+                            validate_reference("scenario loadout", id, &outfit_ids)?;
+                        }
+                    }
                     ScenarioStep::FlyToStation {
                         system, station, ..
                     } => {

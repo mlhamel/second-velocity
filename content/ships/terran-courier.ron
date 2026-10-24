@@ -4,7 +4,7 @@
     race: "terran",
     size: Light,
     description: "A mail packet with delusions of grandeur. Confederation postmasters fly them single-crewed on the Luna-Titan run, and the cargo bay still smells of cancelled stamps.",
-    price: 30000,
+    price: 18000,
     mass: 30.0,
     turn_rate: 3.4,
     acceleration: 205.0,

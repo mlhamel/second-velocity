@@ -1,0 +1,22 @@
+(
+    id: "outfitter-loadout",
+    name: "Equip, Recompute, Resell",
+    description: "Install a second weapon, shield capacity and a tank; sell the shield and verify exact effective stats and retained loadout.",
+    starting_credits: Some(5000),
+    max_ticks: 1000,
+    steps: [
+        FlyToPlanet(system: "sol", planet: "earth", land: true),
+        BuyOutfit(outfit: "pulse-blaster"),
+        BuyOutfit(outfit: "shield-generator-1"),
+        BuyOutfit(outfit: "aux-fuel-tank"),
+        AssertShipStats(max_shields: 60.0, max_armor: 25.0, max_fuel: 170.0, cargo: 20, weapon_slots: 2),
+        SellOutfit(outfit: "shield-generator-1"),
+        AssertLoadout(outfits: ["light-blaster", "pulse-blaster", "aux-fuel-tank"]),
+        AssertShipStats(max_shields: 40.0, max_armor: 25.0, max_fuel: 170.0, cargo: 20, weapon_slots: 2),
+        LiftOff,
+        SetFlight(throttle: 0.0, turn: 0.0, fire: true),
+        Advance(ticks: 20),
+        SetFlight(throttle: 0.0, turn: 0.0, fire: false),
+        AssertAlive(true),
+    ],
+)

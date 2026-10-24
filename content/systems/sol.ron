@@ -13,6 +13,8 @@
     planets: [
         (
             id: "earth",
+            shipyard: Some((ships: ["shuttle", "terran-courier", "terran-hauler", "patrol"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
             name: "Earth",
             description: "Cradle of humanity and seat of the Confederation. The sky bazaars sell everything except patience.",
             sprite: Some("textures/planets/earth.png"),
@@ -25,11 +27,11 @@
                 quest_text: "If your hold isn't spoken for, the Directorate has a contract that needs a hull with fewer markings than a patrol cutter.",
             )),
             commodities: [
-                (id: "food", price: 8),
-                (id: "machinery", price: 45),
-                (id: "medicine", price: 62),
-                (id: "ore", price: 40),
-                (id: "textiles", price: 18),
+                (id: "food", price: 8, icon: Some("textures/commodities/food.png")),
+                (id: "machinery", price: 45, icon: Some("textures/commodities/machinery.png")),
+                (id: "medicine", price: 62, icon: Some("textures/commodities/medicine.png")),
+                (id: "ore", price: 40, icon: Some("textures/commodities/ore.png")),
+                (id: "textiles", price: 18, icon: Some("textures/commodities/textiles.png")),
             ],
         ),
     ],
@@ -49,10 +51,12 @@
                 tribute_text: "Orbital handling charge. We handle your orbit by not reporting your approach vector.",
                 quest_text: "Wayfarer's manifests arrived without the calibration seals. Take the seals before someone calibrates a stamp.",
             )),
-            commodities: [(id: "food", price: 10), (id: "machinery", price: 38), (id: "medicine", price: 55)],
+            commodities: [(id: "food", price: 10, icon: Some("textures/commodities/food.png")), (id: "machinery", price: 38, icon: Some("textures/commodities/machinery.png")), (id: "medicine", price: 55, icon: Some("textures/commodities/medicine.png"))],
         ),
         (
             id: "wayfarer-exchange",
+            shipyard: Some((ships: ["shuttle", "terran-courier", "terran-hauler", "sylph-skiff"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
             name: "Wayfarer Exchange",
             description: "A freeport bolted into the quiet between traffic lanes. Its charter promises neutral ground; its ledger charges by the square metre.",
             radius: 44.0,
@@ -66,7 +70,7 @@
                 tribute_text: "Independent-port maintenance levy. Independence needs filters too.",
                 quest_text: "Earth's clinic ordered fresh med-crates. The invoice says express. Their payment says eventually.",
             )),
-            commodities: [(id: "food", price: 18), (id: "machinery", price: 28), (id: "ore", price: 22)],
+            commodities: [(id: "food", price: 18, icon: Some("textures/commodities/food.png")), (id: "machinery", price: 28, icon: Some("textures/commodities/machinery.png")), (id: "ore", price: 22, icon: Some("textures/commodities/ore.png"))],
         ),
     ],
     meteorites: Some((

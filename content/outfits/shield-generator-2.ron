@@ -1,0 +1,9 @@
+(
+    id: "shield-generator-2",
+    name: "Reinforced Shield Generator",
+    description: "Fifty extra shield points, certified against common regret. Replaces the civilian unit; it does not stack.",
+    price: 1800,
+    mass: 4.0,
+    kind: ShieldGenerator(max_shields: 50.0),
+    icon: Some("textures/outfits/shield-generator-2.png"),
+)

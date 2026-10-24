@@ -21,6 +21,8 @@ pub struct PlayerState {
     pub armor: f32,
     #[serde(default = "default_active_quests_json")]
     pub active_quests_json: String,
+    #[serde(default)]
+    pub equipped_outfits: Option<Vec<String>>,
 }
 
 impl Default for PlayerState {
@@ -35,6 +37,7 @@ impl Default for PlayerState {
             shields: 40.0,
             armor: 25.0,
             active_quests_json: default_active_quests_json(),
+            equipped_outfits: None,
         }
     }
 }
@@ -101,7 +104,8 @@ impl SqliteStorage {
                 fuel REAL NOT NULL DEFAULT 120,
                 shields REAL NOT NULL DEFAULT 40,
                 armor REAL NOT NULL DEFAULT 25,
-                active_quests_json TEXT NOT NULL DEFAULT '[]'
+                active_quests_json TEXT NOT NULL DEFAULT '[]',
+                equipped_outfits_json TEXT
             );",
         )?;
         Self::migrate_columns(&conn)?;
@@ -121,6 +125,12 @@ impl SqliteStorage {
                 [],
             )?;
         }
+        if !cols.iter().any(|c| c == "equipped_outfits_json") {
+            conn.execute(
+                "ALTER TABLE accounts ADD COLUMN equipped_outfits_json TEXT",
+                [],
+            )?;
+        }
         Ok(())
     }
 
@@ -134,6 +144,17 @@ impl SqliteStorage {
         let active_quests_json: String = row
             .get("active_quests_json")
             .unwrap_or_else(|_| default_active_quests_json());
+        let raw: Option<String> = row.get("equipped_outfits_json")?;
+        let equipped_outfits = raw
+            .map(|raw| serde_json::from_str::<Vec<String>>(&raw))
+            .transpose()
+            .map_err(|err| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    0,
+                    rusqlite::types::Type::Text,
+                    Box::new(err),
+                )
+            })?;
         Ok(PlayerState {
             credits: row.get("credits")?,
             cargo,
@@ -144,12 +165,13 @@ impl SqliteStorage {
             shields: row.get("shields")?,
             armor: row.get("armor")?,
             active_quests_json,
+            equipped_outfits,
         })
     }
 }
 
 fn state_columns() -> &'static str {
-    "credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json"
+    "credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json"
 }
 
 impl Storage for SqliteStorage {
@@ -162,8 +184,8 @@ impl Storage for SqliteStorage {
         let state = PlayerState::default();
         let cargo_json = serde_json::to_string(&state.cargo).unwrap_or_else(|_| "[]".into());
         self.conn.lock().unwrap().execute(
-            "INSERT INTO accounts (username, password_hash, credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO accounts (username, password_hash, credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 username,
                 hash,
@@ -177,6 +199,7 @@ impl Storage for SqliteStorage {
                 state.shields,
                 state.armor,
                 state.active_quests_json,
+                Option::<String>::None,
             ],
         )?;
         Ok(state)
@@ -226,8 +249,14 @@ impl Storage for SqliteStorage {
 
     fn save_player(&self, username: &str, state: &PlayerState) -> Result<(), StorageError> {
         let cargo_json = serde_json::to_string(&state.cargo).unwrap_or_else(|_| "[]".into());
-        self.conn.lock().unwrap().execute(
-            "UPDATE accounts SET credits=?2, cargo_json=?3, ship_id=?4, system=?5, pos_x=?6, pos_y=?7, fuel=?8, shields=?9, armor=?10, active_quests_json=?11
+        let outfits_json = state
+            .equipped_outfits
+            .as_ref()
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
+        let changed = self.conn.lock().unwrap().execute(
+            "UPDATE accounts SET credits=?2, cargo_json=?3, ship_id=?4, system=?5, pos_x=?6, pos_y=?7, fuel=?8, shields=?9, armor=?10, active_quests_json=?11, equipped_outfits_json=?12
              WHERE username=?1",
             params![
                 username,
@@ -241,8 +270,12 @@ impl Storage for SqliteStorage {
                 state.shields,
                 state.armor,
                 state.active_quests_json,
+                outfits_json,
             ],
         )?;
+        if changed == 0 {
+            return Err(StorageError::NotFound);
+        }
         Ok(())
     }
 
@@ -277,6 +310,47 @@ mod tests {
     }
 
     #[test]
+    fn loadout_null_empty_and_equipped_states_roundtrip_distinctly() {
+        let storage = SqliteStorage::open_memory().unwrap();
+        let mut saved = storage
+            .create_account("loadout-fixture", "fixture-only")
+            .unwrap();
+        assert_eq!(saved.equipped_outfits, None);
+        for outfits in [
+            Some(vec![]),
+            Some(vec!["light-blaster".into(), "shield-generator-1".into()]),
+            None,
+        ] {
+            saved.equipped_outfits = outfits.clone();
+            storage.save_player("loadout-fixture", &saved).unwrap();
+            let restored = storage
+                .verify_login("loadout-fixture", "fixture-only")
+                .unwrap()
+                .unwrap();
+            assert_eq!(restored.equipped_outfits, outfits);
+        }
+    }
+
+    #[test]
+    fn corrupt_equipment_json_and_missing_save_accounts_are_errors() {
+        let storage = SqliteStorage::open_memory().unwrap();
+        storage
+            .create_account("corrupt-fixture", "fixture-only")
+            .unwrap();
+        storage.conn.lock().unwrap().execute(
+            "UPDATE accounts SET equipped_outfits_json='not JSON' WHERE username='corrupt-fixture'", [],
+        ).unwrap();
+        assert!(matches!(
+            storage.verify_login("corrupt-fixture", "fixture-only"),
+            Err(StorageError::Sql(_))
+        ));
+        assert!(matches!(
+            storage.save_player("missing", &PlayerState::default()),
+            Err(StorageError::NotFound)
+        ));
+    }
+
+    #[test]
     fn save_and_reload() {
         let storage = SqliteStorage::open_memory().expect("open");
         storage.create_account("carol", "pw").expect("create");
@@ -291,6 +365,7 @@ mod tests {
             shields: 30.0,
             armor: 20.0,
             active_quests_json: r#"{"quests":[],"completed":["newhaven-relief"]}"#.to_owned(),
+            equipped_outfits: Some(vec!["light-blaster".into()]),
         };
         storage.save_player("carol", &state).expect("save");
 
@@ -345,6 +420,7 @@ mod tests {
             .create_account("legacy_user", "pw")
             .expect("create after migration");
         assert_eq!(created.active_quests_json, "[]");
+        assert_eq!(created.equipped_outfits, None);
         let _ = std::fs::remove_file(&path);
     }
 }

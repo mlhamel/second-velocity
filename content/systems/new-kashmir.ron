@@ -19,9 +19,9 @@
                 quest_text: "The stewardship keeps a needs-list pinned to the granary door: medicine runs, seed couriers, the occasional discreet errand past the saffron barons. Pay is fair; gratitude is extra.",
             )),
             commodities: [
-                (id: "food", price: 4),
-                (id: "luxury", price: 70),
-                (id: "medicine", price: 42),
+                (id: "food", price: 4, icon: Some("textures/commodities/food.png")),
+                (id: "luxury", price: 70, icon: Some("textures/commodities/luxury.png")),
+                (id: "medicine", price: 42, icon: Some("textures/commodities/medicine.png")),
             ],
         ),
     ],

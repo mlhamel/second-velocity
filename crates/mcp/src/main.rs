@@ -73,7 +73,19 @@ struct RunScenarioArgs {
     id: Option<String>,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct BuyShipArgs {
+    ship: String,
+}
+#[derive(Debug, Deserialize, JsonSchema)]
+struct OutfitArgs {
+    outfit: String,
+}
+
 enum Command {
+    BuyShip(String),
+    BuyOutfit(String),
+    SellOutfit(String),
     Advance(u32),
     Observe,
     SetFlight {
@@ -125,6 +137,28 @@ impl GameMcp {
 
 #[tool_router(server_handler)]
 impl GameMcp {
+    #[tool(
+        description = "Buy a hull at your docked port using a 50% old-hull trade-in. Cargo and equipment must fit; outfits transfer."
+    )]
+    async fn buy_ship(&self, Parameters(BuyShipArgs { ship }): Parameters<BuyShipArgs>) -> String {
+        self.call(Command::BuyShip(ship)).await
+    }
+    #[tool(
+        description = "Buy and install one outfit from your docked port's catalog. Server validates credits and slots."
+    )]
+    async fn buy_outfit(
+        &self,
+        Parameters(OutfitArgs { outfit }): Parameters<OutfitArgs>,
+    ) -> String {
+        self.call(Command::BuyOutfit(outfit)).await
+    }
+    #[tool(description = "Sell one installed outfit at a docked outfitter for 50% of list price.")]
+    async fn sell_outfit(
+        &self,
+        Parameters(OutfitArgs { outfit }): Parameters<OutfitArgs>,
+    ) -> String {
+        self.call(Command::SellOutfit(outfit)).await
+    }
     #[tool(
         description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and evr-client built alongside evr-mcp. Overwrites the four fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
     )]
@@ -272,6 +306,22 @@ fn game_thread(content_root: PathBuf, mut rx: mpsc::Receiver<(Command, oneshot::
     while let Some((command, reply)) = rx.blocking_recv() {
         harness.ensure_connected();
         let _ = reply.send(match command {
+            Command::BuyShip(id) => {
+                harness.buy_ship(&id);
+                harness.advance(SETTLE_TICKS);
+                json(&harness.observe())
+            }
+            Command::BuyOutfit(id) => {
+                harness.buy_outfit(&id);
+                harness.advance(SETTLE_TICKS);
+                json(&harness.observe())
+            }
+            Command::SellOutfit(id) => {
+                harness.sell_outfit(&id);
+                harness.advance(SETTLE_TICKS);
+                json(&harness.observe())
+            }
+
             Command::Advance(ticks) => {
                 harness.advance(ticks);
                 format!("advanced {ticks} ticks (tick {})", harness.ticks)

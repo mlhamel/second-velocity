@@ -1,0 +1,9 @@
+(
+    id: "shield-generator-1",
+    name: "Civilian Shield Generator",
+    description: "Twenty more points between your manifest and the vacuum. Installation does not include courage.",
+    price: 750,
+    mass: 2.0,
+    kind: ShieldGenerator(max_shields: 20.0),
+    icon: Some("textures/outfits/shield-generator-1.png"),
+)

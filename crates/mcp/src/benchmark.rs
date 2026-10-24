@@ -59,6 +59,9 @@ pub fn run_scenarios(
 
 pub fn run_scenario(content_root: &Path, def: &ScenarioDef) -> ScenarioReport {
     let mut harness = Harness::new(content_root);
+    if let Some(credits) = def.starting_credits {
+        harness.scenario_credits(credits);
+    }
     if let Some(seed) = def.encounter_seed {
         harness
             .server
@@ -154,6 +157,96 @@ fn execute_step(
     hull_damage_taken: &mut f32,
 ) -> Result<(), String> {
     match step {
+        ScenarioStep::BuyShip { ship } => {
+            harness.buy_ship(ship);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            if harness.observe()["ship"]["def_id"].as_str() != Some(ship) {
+                return Err("ship purchase rejected".into());
+            }
+            Ok(())
+        }
+        ScenarioStep::BuyOutfit { outfit } | ScenarioStep::SellOutfit { outfit } => {
+            let before = outfit_count(&harness.observe(), outfit);
+            let buying = matches!(step, ScenarioStep::BuyOutfit { .. });
+            if buying {
+                harness.buy_outfit(outfit);
+            } else {
+                harness.sell_outfit(outfit);
+            }
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            let after = outfit_count(&harness.observe(), outfit);
+            if if buying {
+                after != before + 1
+            } else {
+                before == 0 || after + 1 != before
+            } {
+                return Err("outfitter transaction rejected".into());
+            }
+            Ok(())
+        }
+        ScenarioStep::AssertShip(id) => {
+            if harness.observe()["ship"]["def_id"].as_str() != Some(id) {
+                return Err(format!("expected hull {id}"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertLoadout { outfits } => {
+            let state = harness.observe();
+            let mut actual = state["ship"]["outfits"]
+                .as_array()
+                .ok_or("missing loadout")?
+                .iter()
+                .map(|id| id.as_str().unwrap_or("").to_owned())
+                .collect::<Vec<_>>();
+            let mut expected = outfits.clone();
+            actual.sort();
+            expected.sort();
+            if actual != expected {
+                return Err(format!("expected loadout {expected:?}, got {actual:?}"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertShipStats {
+            max_shields,
+            max_armor,
+            max_fuel,
+            cargo,
+            weapon_slots,
+        } => {
+            let state = harness.observe();
+            for (key, expected) in [
+                ("max_shields", f64::from(*max_shields)),
+                ("max_armor", f64::from(*max_armor)),
+                ("max_fuel", f64::from(*max_fuel)),
+                ("cargo_capacity", f64::from(*cargo)),
+                ("weapon_slots", f64::from(*weapon_slots)),
+            ] {
+                let actual = state["ship"][key]
+                    .as_f64()
+                    .ok_or_else(|| format!("missing ship.{key}"))?;
+                if (actual - expected).abs() > 0.001 {
+                    return Err(format!("{key}: expected {expected}, got {actual}"));
+                }
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
         ScenarioStep::SetFlight {
             throttle,
             turn,
@@ -986,6 +1079,12 @@ fn execute_step(
             Ok(())
         }
     }
+}
+
+fn outfit_count(state: &Value, outfit: &str) -> usize {
+    state["ship"]["outfits"].as_array().map_or(0, |ids| {
+        ids.iter().filter(|id| id.as_str() == Some(outfit)).count()
+    })
 }
 
 fn docked_at(state: &Value, system: &str, location: &str) -> bool {

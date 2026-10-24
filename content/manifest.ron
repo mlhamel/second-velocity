@@ -48,6 +48,10 @@
     ],
     outfits: [
         "outfits/light-blaster.ron",
+        "outfits/pulse-blaster.ron",
+        "outfits/shield-generator-1.ron",
+        "outfits/shield-generator-2.ron",
+        "outfits/aux-fuel-tank.ron",
     ],
     quests: [
         "quests/newhaven-relief.ron",
@@ -74,5 +78,7 @@
         "scenarios/black-hole-death.ron",
         "scenarios/station-orbital-trade.ron",
         "scenarios/station-delivery-loop.ron",
+        "scenarios/shipyard-upgrade.ron",
+        "scenarios/outfitter-loadout.ron",
     ],
 )

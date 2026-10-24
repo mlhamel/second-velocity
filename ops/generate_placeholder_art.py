@@ -174,6 +174,41 @@ def chief(buffer, coat_color, accent_color):
     fill_polygon(buffer, visor, accent_color + (255,))
 
 
+def commodity(buffer, body, band):
+    box = [(0.24, 0.26), (0.76, 0.26), (0.76, 0.74), (0.24, 0.74)]
+    lid = [(0.20, 0.22), (0.80, 0.22), (0.80, 0.32), (0.20, 0.32)]
+    fill_polygon(buffer, box, body)
+    fill_polygon(buffer, lid, band)
+    for y0 in (0.42, 0.54, 0.66):
+        rib = [(0.24, y0), (0.76, y0), (0.76, y0 + 0.05), (0.24, y0 + 0.05)]
+        fill_polygon(buffer, rib, band)
+
+
+def weapon(buffer, body, tip):
+    block = [(0.30, 0.42), (0.70, 0.42), (0.70, 0.58), (0.30, 0.58)]
+    barrel = [(0.70, 0.46), (0.88, 0.46), (0.88, 0.54), (0.70, 0.54)]
+    grip = [(0.38, 0.58), (0.50, 0.58), (0.46, 0.74), (0.34, 0.74)]
+    fill_polygon(buffer, block, body)
+    fill_polygon(buffer, barrel, body)
+    fill_polygon(buffer, grip, body)
+    fill_circle(buffer, SIZE * 0.90, SIZE * 0.50, SIZE * 0.05, tip, 0)
+
+
+def shield_generator(buffer, ring, core):
+    fill_circle(buffer, SIZE * 0.5, SIZE * 0.48, SIZE * 0.34, ring, 1.6)
+    fill_circle(buffer, SIZE * 0.5, SIZE * 0.48, SIZE * 0.20, core, 0)
+    pedestal = [(0.36, 0.78), (0.64, 0.78), (0.64, 0.86), (0.36, 0.86)]
+    fill_polygon(buffer, pedestal, ring)
+
+
+def fuel_tank(buffer):
+    body = [(0.30, 0.30), (0.70, 0.30), (0.70, 0.72), (0.30, 0.72)]
+    cap = [(0.42, 0.22), (0.58, 0.22), (0.58, 0.30), (0.42, 0.30)]
+    fill_polygon(buffer, body, (200, 150, 70, 255))
+    fill_polygon(buffer, cap, (150, 110, 50, 255))
+    fill_circle(buffer, SIZE * 0.5, SIZE * 0.52, SIZE * 0.07, (245, 230, 200, 255), 0)
+
+
 def write_if_missing(path, width, height, pixels, force=False):
     if os.path.exists(path) and not force:
         print(f"kept existing {path} (pass --force to overwrite)")
@@ -247,6 +282,40 @@ def main():
         chief_pixels = [0] * (SIZE * SIZE * 4)
         chief(chief_pixels, coat, accent)
         write_if_missing(os.path.join(root, "chiefs", name), SIZE, SIZE, bytes(chief_pixels), force)
+
+    for name, body, band in [
+        ("food.png", (92, 160, 70, 255), (60, 110, 48, 255)),
+        ("isotopes.png", (170, 200, 60, 255), (110, 140, 40, 255)),
+        ("luxury.png", (210, 170, 70, 255), (150, 115, 45, 255)),
+        ("machinery.png", (120, 140, 165, 255), (80, 100, 125, 255)),
+        ("medicine.png", (215, 225, 230, 255), (200, 60, 70, 255)),
+        ("ore.png", (140, 110, 90, 255), (95, 75, 60, 255)),
+        ("textiles.png", (150, 110, 180, 255), (105, 75, 135, 255)),
+        ("weapons.png", (120, 60, 60, 255), (220, 120, 50, 255)),
+    ]:
+        commodity_pixels = [0] * (SIZE * SIZE * 4)
+        commodity(commodity_pixels, body, band)
+        write_if_missing(os.path.join(root, "commodities", name), SIZE, SIZE, bytes(commodity_pixels), force)
+
+    for name, body, tip in [
+        ("light-blaster.png", (170, 190, 200, 255), (95, 230, 220, 255)),
+        ("pulse-blaster.png", (150, 140, 190, 255), (230, 120, 235, 255)),
+    ]:
+        weapon_pixels = [0] * (SIZE * SIZE * 4)
+        weapon(weapon_pixels, body, tip)
+        write_if_missing(os.path.join(root, "outfits", name), SIZE, SIZE, bytes(weapon_pixels), force)
+
+    for name, ring, core in [
+        ("shield-generator-1.png", (90, 200, 185, 255), (150, 235, 225, 255)),
+        ("shield-generator-2.png", (80, 160, 235, 255), (150, 200, 250, 255)),
+    ]:
+        shield_pixels = [0] * (SIZE * SIZE * 4)
+        shield_generator(shield_pixels, ring, core)
+        write_if_missing(os.path.join(root, "outfits", name), SIZE, SIZE, bytes(shield_pixels), force)
+
+    tank_pixels = [0] * (SIZE * SIZE * 4)
+    fuel_tank(tank_pixels)
+    write_if_missing(os.path.join(root, "outfits", "aux-fuel-tank.png"), SIZE, SIZE, bytes(tank_pixels), force)
 
 
 if __name__ == "__main__":
