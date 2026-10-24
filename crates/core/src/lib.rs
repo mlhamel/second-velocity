@@ -1,5 +1,7 @@
 use glam::Vec2;
 
+pub mod market;
+
 /// Scripted circular orbit; using elapsed simulation time avoids incremental drift.
 pub fn orbit_position(
     center: Vec2,
