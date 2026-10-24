@@ -10,13 +10,14 @@ use evr_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
     DockableKind, DockableTag, DockedAt, EncounterOption, EquippedOutfits, Explosion, Fuel,
     HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice,
-    PlanetTag, PlayerDied, Position, Projectile, QuestTarget, RequestDock, RequestLand,
+    PlanetTag, PlayerDied, PortMarket, Position, Projectile, QuestTarget, RequestDock, RequestLand,
     RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
     ShipInfo, ShipKind, StarTag, SystemMembership,
 };
 
 use crate::Content;
 
+pub mod market;
 mod progression;
 use progression::*;
 
@@ -281,6 +282,7 @@ impl Plugin for GameplayPlugin {
             .init_resource::<PendingRecoveries>()
             .init_resource::<PirateRespawn>()
             .init_resource::<EncounterRng>()
+            .init_resource::<market::MarketState>()
             .add_observer(on_set_throttle)
             .add_observer(on_set_turn)
             .add_observer(on_set_firing)
@@ -301,7 +303,13 @@ impl Plugin for GameplayPlugin {
                 Update,
                 (
                     authorize_clients,
-                    (station_motion, sync_docked_ships).chain(),
+                    (
+                        station_motion,
+                        sync_docked_ships,
+                        market::economy_tick,
+                        market::flush_market_news,
+                    )
+                        .chain(),
                     apply_ship_control,
                     black_hole_gravity,
                     meteorite_movement,
@@ -477,8 +485,14 @@ pub fn spawn_meteorite(
         .id()
 }
 
-fn spawn_world(mut commands: Commands, content: Res<Content>, time: Res<Time>) {
+fn spawn_world(
+    mut commands: Commands,
+    content: Res<Content>,
+    time: Res<Time>,
+    storage: Res<StorageResource>,
+) {
     let pack = &content.0;
+    let market_state = market::init_market_state(&storage, pack);
     for system in &pack.systems {
         let sys_center = Vec2::new(system.position.0, system.position.1);
         for (index, planet) in system.planets.iter().enumerate() {
@@ -496,6 +510,9 @@ fn spawn_world(mut commands: Commands, content: Res<Content>, time: Res<Time>) {
                     name: planet.name.clone(),
                     radius: PLANET_RADIUS,
                     kind: DockableKind::Planet,
+                },
+                PortMarket {
+                    prices: market::port_prices(&market_state, pack, &system.id, &planet.id),
                 },
                 Position(Vec2::new(
                     system.position.0 + PLANET_OFFSET_X + index as f32 * evr_data::PLANET_SPACING,
@@ -538,6 +555,9 @@ fn spawn_world(mut commands: Commands, content: Res<Content>, time: Res<Time>) {
                     name: station.name.clone(),
                     radius: station.radius,
                     kind: DockableKind::Station,
+                },
+                PortMarket {
+                    prices: market::port_prices(&market_state, pack, &system.id, &station.id),
                 },
                 Position(position),
             ));
@@ -625,6 +645,7 @@ fn spawn_world(mut commands: Commands, content: Res<Content>, time: Res<Time>) {
         Vec2::new(0.0, -400.0),
     );
     spawn_living_galaxy_npcs(&mut commands, pack);
+    commands.insert_resource(market_state);
 }
 
 fn station_motion(time: Res<Time>, mut stations: Query<(&StationOrbit, &mut Position)>) {
@@ -1150,6 +1171,7 @@ fn npc_ai(
     mut commands: Commands,
     time: Res<Time>,
     content: Res<Content>,
+    mut market: ResMut<market::MarketState>,
     mut npcs: NpcShips,
     players: Query<(Entity, &Position, &Owner, Option<&DockedAt>), With<PlayerShip>>,
 ) {
@@ -1314,6 +1336,15 @@ fn npc_ai(
                         *route_step = route_step.wrapping_add(1);
                         let arrived_system = target_system.clone();
                         membership.0 = arrived_system.clone();
+                        market.shift_supply(
+                            market::MarketKey {
+                                system: arrived_system.clone(),
+                                port: target_planet.clone(),
+                                commodity: commodity.clone(),
+                            },
+                            *qty as i32,
+                            *qty,
+                        );
 
                         const COMMODITIES: [&str; 3] = ["food", "machinery", "medicine"];
                         let next_comm = pack
@@ -3171,11 +3202,17 @@ fn on_respond_to_encounter(
     }
 }
 
+fn listing(pack: &ContentPack, system: &str, location: &str, commodity: &str) -> bool {
+    pack.dockable(system, location)
+        .is_some_and(|port| port.commodities().iter().any(|entry| entry.id == commodity))
+}
+
 fn on_buy_commodity(
     trigger: On<FromClient<BuyCommodity>>,
     mut commands: Commands,
     clients: Query<&NetworkId>,
     content: Res<Content>,
+    mut market: ResMut<market::MarketState>,
     mut ships: Query<(&Owner, &DockedAt, &ShipSpec, &mut Wallet, &mut Ship)>,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
@@ -3186,12 +3223,22 @@ fn on_buy_commodity(
     else {
         return;
     };
-    let Some(price) = planet_price(
-        &content.0,
-        &docked.system,
-        &docked.location,
-        &event.commodity,
-    ) else {
+    let Some(price) = market
+        .price(
+            &content.0,
+            &docked.system,
+            &docked.location,
+            &event.commodity,
+        )
+        .filter(|_| {
+            listing(
+                &content.0,
+                &docked.system,
+                &docked.location,
+                &event.commodity,
+            )
+        })
+    else {
         notice(
             &mut commands,
             trigger.client_id,
@@ -3206,7 +3253,7 @@ fn on_buy_commodity(
             "The broker stares at your empty order.",
         );
         return;
-    }
+    };
     let Some(total) = price.checked_mul(event.qty) else {
         notice(
             &mut commands,
@@ -3227,6 +3274,15 @@ fn on_buy_commodity(
         return;
     }
     wallet.0.credits -= total;
+    market.shift_supply(
+        market::MarketKey {
+            system: docked.system.clone(),
+            port: docked.location.clone(),
+            commodity: event.commodity.clone(),
+        },
+        -(event.qty as i32),
+        event.qty,
+    );
     notice(
         &mut commands,
         trigger.client_id,
@@ -3239,6 +3295,7 @@ fn on_sell_commodity(
     mut commands: Commands,
     clients: Query<&NetworkId>,
     content: Res<Content>,
+    mut market: ResMut<market::MarketState>,
     mut ships: Query<(&Owner, &DockedAt, &mut Wallet)>,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
@@ -3249,12 +3306,22 @@ fn on_sell_commodity(
     else {
         return;
     };
-    let Some(price) = planet_price(
-        &content.0,
-        &docked.system,
-        &docked.location,
-        &event.commodity,
-    ) else {
+    let Some(price) = market
+        .price(
+            &content.0,
+            &docked.system,
+            &docked.location,
+            &event.commodity,
+        )
+        .filter(|_| {
+            listing(
+                &content.0,
+                &docked.system,
+                &docked.location,
+                &event.commodity,
+            )
+        })
+    else {
         notice(
             &mut commands,
             trigger.client_id,
@@ -3287,6 +3354,15 @@ fn on_sell_commodity(
         return;
     };
     wallet.0.credits += total;
+    market.shift_supply(
+        market::MarketKey {
+            system: docked.system.clone(),
+            port: docked.location.clone(),
+            commodity: event.commodity.clone(),
+        },
+        event.qty as i32,
+        event.qty,
+    );
     notice(
         &mut commands,
         trigger.client_id,
@@ -3309,15 +3385,6 @@ fn on_set_warp(
     }
 }
 
-fn planet_price(pack: &ContentPack, system: &str, planet: &str, commodity: &str) -> Option<u32> {
-    let port = pack.dockable(system, planet)?;
-    let entry = port
-        .commodities()
-        .iter()
-        .find(|c| c.id == commodity)
-        .map(|c| c.price)?;
-    Some(entry)
-}
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -3339,6 +3406,7 @@ mod tests {
         EMBEDDED_CLIENT_ID, PROTOCOL_ID, TickMode, attach_memory, attach_udp, build_server_app,
     };
 
+    mod market;
     mod progression;
     mod stations;
 

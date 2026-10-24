@@ -1,0 +1,6 @@
+(
+    id: "medicine",
+    name: "Medicine",
+    description: "Med-crates with honest expiry dates and counterfeit seals. The trick is knowing which is which.",
+    icon: Some("textures/commodities/medicine.png"),
+)

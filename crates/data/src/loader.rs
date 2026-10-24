@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 
+use crate::commodity::CommodityDef;
 use crate::error::{ContentError, validate_asset, validate_ids, validate_reference};
 use crate::manifest::Manifest;
 use crate::outfit::OutfitDef;
@@ -17,6 +18,7 @@ pub struct ContentPack {
     pub ships: Vec<ShipDef>,
     pub systems: Vec<SystemDef>,
     pub outfits: Vec<OutfitDef>,
+    pub commodities: Vec<CommodityDef>,
     pub quests: Vec<QuestDef>,
     pub scenarios: Vec<ScenarioDef>,
 }
@@ -40,6 +42,11 @@ impl ContentPack {
             outfits.push(parse_ron(&root.join(path))?);
         }
 
+        let mut commodities: Vec<CommodityDef> = Vec::with_capacity(manifest.commodities.len());
+        for path in &manifest.commodities {
+            commodities.push(parse_ron(&root.join(path))?);
+        }
+
         let mut quests: Vec<QuestDef> = Vec::with_capacity(manifest.quests.len());
         for path in &manifest.quests {
             quests.push(parse_ron(&root.join(path))?);
@@ -50,14 +57,22 @@ impl ContentPack {
             scenarios.push(parse_ron(&root.join(path))?);
         }
 
-        Self::validate(&ships, &systems, &outfits, &quests, &scenarios)?;
-        Self::validate_assets(root, &ships, &systems, &outfits)?;
+        Self::validate(
+            &ships,
+            &systems,
+            &outfits,
+            &commodities,
+            &quests,
+            &scenarios,
+        )?;
+        Self::validate_assets(root, &ships, &systems, &outfits, &commodities)?;
 
         Ok(Self {
             manifest,
             ships,
             systems,
             outfits,
+            commodities,
             quests,
             scenarios,
         })
@@ -68,6 +83,7 @@ impl ContentPack {
         ships: &[ShipDef],
         systems: &[SystemDef],
         outfits: &[OutfitDef],
+        commodities: &[CommodityDef],
     ) -> Result<(), ContentError> {
         let assets_root = root.parent().unwrap_or(root).join("assets");
         for ship in ships {
@@ -80,15 +96,15 @@ impl ContentPack {
                 validate_asset(&assets_root, icon)?;
             }
         }
+        for commodity in commodities {
+            if let Some(icon) = &commodity.icon {
+                validate_asset(&assets_root, icon)?;
+            }
+        }
         for system in systems {
             for planet in &system.planets {
                 if let Some(sprite) = &planet.sprite {
                     validate_asset(&assets_root, sprite)?;
-                }
-                for commodity in &planet.commodities {
-                    if let Some(icon) = &commodity.icon {
-                        validate_asset(&assets_root, icon)?;
-                    }
                 }
                 if let Some(chief) = &planet.chief
                     && let Some(portrait) = &chief.portrait
@@ -109,11 +125,6 @@ impl ContentPack {
             for station in &system.stations {
                 if let Some(sprite) = &station.sprite {
                     validate_asset(&assets_root, sprite)?;
-                }
-                for commodity in &station.commodities {
-                    if let Some(icon) = &commodity.icon {
-                        validate_asset(&assets_root, icon)?;
-                    }
                 }
                 if let Some(portrait) = station
                     .master
@@ -143,6 +154,10 @@ impl ContentPack {
         self.outfits.iter().find(|outfit| outfit.id == id)
     }
 
+    pub fn commodity(&self, id: &str) -> Option<&CommodityDef> {
+        self.commodities.iter().find(|commodity| commodity.id == id)
+    }
+
     pub fn quest(&self, id: &str) -> Option<&QuestDef> {
         self.quests.iter().find(|quest| quest.id == id)
     }
@@ -155,12 +170,17 @@ impl ContentPack {
         ships: &[ShipDef],
         systems: &[SystemDef],
         outfits: &[OutfitDef],
+        commodities: &[CommodityDef],
         quests: &[QuestDef],
         scenarios: &[ScenarioDef],
     ) -> Result<(), ContentError> {
         validate_ids("ship", ships.iter().map(|ship| ship.id.clone()))?;
         validate_ids("system", systems.iter().map(|system| system.id.clone()))?;
         validate_ids("outfit", outfits.iter().map(|outfit| outfit.id.clone()))?;
+        validate_ids(
+            "commodity",
+            commodities.iter().map(|commodity| commodity.id.clone()),
+        )?;
         validate_ids("quest", quests.iter().map(|quest| quest.id.clone()))?;
         validate_ids(
             "scenario",
@@ -169,6 +189,8 @@ impl ContentPack {
 
         let outfit_ids: std::collections::HashSet<_> =
             outfits.iter().map(|o| o.id.clone()).collect();
+        let commodity_ids: std::collections::HashSet<_> =
+            commodities.iter().map(|c| c.id.clone()).collect();
         for outfit in outfits {
             let positive = |value: f32| value.is_finite() && value > 0.0;
             let valid = outfit.price > 0
@@ -230,6 +252,9 @@ impl ContentPack {
                     for id in &shop.outfits {
                         validate_reference("outfitter outfit", id, &outfit_ids)?;
                     }
+                }
+                for entry in port.commodities() {
+                    validate_reference("port commodity", &entry.id, &commodity_ids)?;
                 }
             }
             validate_ids(
@@ -452,6 +477,19 @@ impl ContentPack {
                     }
                     ScenarioStep::AssertDocked(Some(planet)) => {
                         validate_reference("scenario docked planet", planet, &dockable_ids)?;
+                    }
+                    ScenarioStep::AssertPrice {
+                        system,
+                        location,
+                        commodity,
+                        ..
+                    } => {
+                        validate_reference(
+                            "scenario price port",
+                            &format!("{system}/{location}"),
+                            &dockable_refs,
+                        )?;
+                        validate_reference("scenario price commodity", commodity, &commodity_ids)?;
                     }
                     ScenarioStep::AssertCompletedQuest(quest_id) => {
                         validate_reference("scenario quest", quest_id, &quest_ids)?;

@@ -1,3 +1,4 @@
+mod commodity;
 mod error;
 mod loader;
 mod loadout;
@@ -8,6 +9,7 @@ mod scenario;
 mod ship;
 mod system;
 
+pub use commodity::CommodityDef;
 pub use error::ContentError;
 pub use loader::ContentPack;
 pub use loadout::LoadoutStats;

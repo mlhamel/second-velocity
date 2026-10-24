@@ -1,7 +1,7 @@
 use super::*;
 use evr_protocol::{BuyOutfit, BuyShip, SellOutfit};
 
-fn player(h: &mut Harness, owner: u64) -> Entity {
+pub(super) fn player(h: &mut Harness, owner: u64) -> Entity {
     h.server
         .world_mut()
         .query::<(Entity, &Owner)>()
@@ -11,14 +11,14 @@ fn player(h: &mut Harness, owner: u64) -> Entity {
         .0
 }
 
-fn ready() -> (Harness, Entity) {
+pub(super) fn ready() -> (Harness, Entity) {
     let mut h = Harness::new();
     h.step_until(200, |h| h.my_ship().is_some());
     let entity = player(&mut h, 1);
     (h, entity)
 }
 
-fn dock_earth(h: &mut Harness) {
+pub(super) fn dock_earth(h: &mut Harness) {
     h.set_server_ship(1, |s| {
         s.position = Vec2::new(480.0, 0.0);
         s.velocity = Vec2::ZERO;
@@ -334,6 +334,12 @@ impl crate::Storage for FailingSave {
         Err(crate::StorageError::NotFound)
     }
     fn save_player(&self, _: &str, _: &crate::PlayerState) -> Result<(), crate::StorageError> {
+        Err(crate::StorageError::NotFound)
+    }
+    fn load_market(&self) -> Result<crate::MarketSnapshot, crate::StorageError> {
+        Ok(crate::MarketSnapshot::default())
+    }
+    fn save_market(&self, _: &crate::MarketSnapshot) -> Result<(), crate::StorageError> {
         Err(crate::StorageError::NotFound)
     }
     fn close(&self) {}

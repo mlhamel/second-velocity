@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_data::{ContentPack, OutfitKind};
 use evr_protocol::{
-    AccountState, BuyCommodity, BuyOutfit, BuyShip, DockedAt, EquippedOutfits, SellCommodity,
-    SellOutfit, ShipInfo,
+    AccountState, BuyCommodity, BuyOutfit, BuyShip, DockableTag, DockedAt, EquippedOutfits,
+    PortMarket, SellCommodity, SellOutfit, ShipInfo,
 };
 
 use crate::{MyNetworkId, chief::ChiefPanelState, input::ClientContent};
@@ -216,6 +216,7 @@ fn equipped_counts(ids: &[String]) -> Vec<(&str, usize)> {
     counts
 }
 
+#[allow(clippy::too_many_arguments)]
 fn shop_model(
     pack: &ContentPack,
     info: &ShipInfo,
@@ -224,6 +225,7 @@ fn shop_model(
     docked: &DockedAt,
     tab: ShopTab,
     blocked: bool,
+    prices: Option<&PortMarket>,
 ) -> ShopModel {
     let mut model = ShopModel {
         heading: format!("docked at {}", docked.location),
@@ -272,16 +274,25 @@ fn shop_model(
                     .iter()
                     .find(|(id, _)| id == &commodity.id)
                     .map_or(0, |(_, qty)| *qty);
-                let name = commodity.id.as_str();
+                let name = pack
+                    .commodity(&commodity.id)
+                    .map_or(commodity.id.as_str(), |def| def.name.as_str());
+                let price = prices
+                    .and_then(|market| {
+                        market
+                            .prices
+                            .iter()
+                            .find(|entry| entry.commodity == commodity.id)
+                            .map(|entry| entry.price)
+                    })
+                    .unwrap_or(commodity.price);
                 let buy = ShopAction::BuyCommodity(commodity.id.clone());
                 let sell = ShopAction::SellCommodity(commodity.id.clone());
                 model.item(
-                    commodity.icon.clone().into(),
-                    format!(
-                        "{}  {name} @ {} cr (hold {held})",
-                        index + 1,
-                        commodity.price
-                    ),
+                    pack.commodity(&commodity.id)
+                        .and_then(|def| def.icon.clone())
+                        .into(),
+                    format!("{}  {name} @ {price} cr (hold {held})", index + 1,),
                     vec![
                         ("Buy 1".into(), Some(buy.clone())),
                         ("Sell 1".into(), Some(sell.clone())),
@@ -510,6 +521,7 @@ fn update_shops(
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<ShopState>,
     ships: ShopShips,
+    ports: Query<(&DockableTag, &PortMarket)>,
     mut panel: Query<(Entity, &mut Node, &mut ScrollPosition), With<ShopPanel>>,
     interactions: Query<(&Interaction, &ShopAction), Changed<Interaction>>,
     mut previous: Local<Option<ShopModel>>,
@@ -537,8 +549,12 @@ fn update_shops(
     state.sync(Some(docked), available);
     let location_changed = old_location != state.location;
     let blocked = chief.visible;
+    let market = ports
+        .iter()
+        .find(|(tag, _)| tag.system == docked.system && tag.id == docked.location)
+        .map(|(_, prices)| prices);
     let mut model = shop_model(
-        &content.0, info, account, equipped, docked, state.tab, blocked,
+        &content.0, info, account, equipped, docked, state.tab, blocked, market,
     );
     // Never route an old port's click or a held transition key to a new port.
     if !blocked
@@ -563,7 +579,7 @@ fn update_shops(
         }
         if model.tab != state.tab {
             model = shop_model(
-                &content.0, info, account, equipped, docked, state.tab, blocked,
+                &content.0, info, account, equipped, docked, state.tab, blocked, market,
             );
             scroll.0 = Vec2::ZERO;
         }
@@ -891,6 +907,7 @@ mod tests {
             &docked,
             ShopTab::Outfitter,
             false,
+            None,
         );
         assert_eq!(model.keyboard[0].0, None);
         assert_eq!(
@@ -917,6 +934,7 @@ mod tests {
             &docked,
             ShopTab::Shipyard,
             false,
+            None,
         );
         assert!(missing.keyboard.iter().all(|(buy, _)| buy.is_none()));
         account.cargo.push(("food".into(), u32::MAX));
@@ -929,6 +947,7 @@ mod tests {
             &docked,
             ShopTab::Shipyard,
             false,
+            None,
         );
         assert!(full.keyboard.iter().all(|(buy, _)| buy.is_none()));
         assert!(
@@ -958,6 +977,7 @@ mod tests {
             &docked,
             ShopTab::Outfitter,
             false,
+            None,
         );
         assert!(model.permits(&ShopAction::SellOutfit("light-blaster".into())));
         assert!(model.keyboard.is_empty());
@@ -971,6 +991,7 @@ mod tests {
             &docked,
             ShopTab::Market,
             false,
+            None,
         );
         assert_eq!(model.available, [true, false, false]);
         assert!(!model.permits(&ShopAction::Tab(ShopTab::Shipyard)));

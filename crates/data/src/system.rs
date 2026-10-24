@@ -207,6 +207,4 @@ pub struct ChiefDef {
 pub struct CommodityPrice {
     pub id: String,
     pub price: u32,
-    #[serde(default)]
-    pub icon: Option<String>,
 }

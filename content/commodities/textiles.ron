@@ -1,0 +1,6 @@
+(
+    id: "textiles",
+    name: "Textiles",
+    description: "Bulk fabric and finished cloth from the mill worlds. Boring, breathable, and always in demand somewhere.",
+    icon: Some("textures/commodities/textiles.png"),
+)

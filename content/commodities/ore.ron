@@ -1,0 +1,6 @@
+(
+    id: "ore",
+    name: "Ore",
+    description: "Raw belter rock, unrefined and unapologetic. Someone else's refinery problem, your profit margin.",
+    icon: Some("textures/commodities/ore.png"),
+)

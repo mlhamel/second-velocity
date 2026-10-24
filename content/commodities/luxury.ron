@@ -1,0 +1,6 @@
+(
+    id: "luxury",
+    name: "Luxury Goods",
+    description: "Perfume, silk, and small sculptures nobody needs. Somebody's bonus depends on it arriving on time.",
+    icon: Some("textures/commodities/luxury.png"),
+)

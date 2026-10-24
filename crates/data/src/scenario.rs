@@ -144,4 +144,16 @@ pub enum ScenarioStep {
         #[serde(default)]
         kind: Option<String>,
     },
+    AdvanceEconomyTicks {
+        ticks: u32,
+    },
+    AssertPrice {
+        system: String,
+        location: String,
+        commodity: String,
+        #[serde(default)]
+        min: Option<u32>,
+        #[serde(default)]
+        max: Option<u32>,
+    },
 }

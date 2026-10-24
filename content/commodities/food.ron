@@ -1,0 +1,6 @@
+(
+    id: "food",
+    name: "Foodstuffs",
+    description: "Sealed crates of protein, grain, and honest dirt-grown tomatoes. Tastes like home, weighs like bulk.",
+    icon: Some("textures/commodities/food.png"),
+)

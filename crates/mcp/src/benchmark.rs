@@ -656,6 +656,53 @@ fn execute_step(
             *assertions_passed += 1;
             Ok(())
         }
+        ScenarioStep::AdvanceEconomyTicks { ticks } => {
+            evr_server::gameplay::market::force_market_ticks(harness.server.world_mut(), *ticks);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::AssertPrice {
+            system,
+            location,
+            commodity,
+            min,
+            max,
+        } => {
+            let actual = evr_server::gameplay::market::market_price(
+                harness.server.world(),
+                system,
+                location,
+                commodity,
+            );
+            let Some(actual) = actual else {
+                return Err(format!(
+                    "no market entry for {system}/{location}/{commodity}"
+                ));
+            };
+            if let Some(min_val) = min
+                && actual < *min_val
+            {
+                return Err(format!(
+                    "expected {commodity} at {system}/{location} >= {min_val}, got {actual}"
+                ));
+            }
+            if let Some(max_val) = max
+                && actual > *max_val
+            {
+                return Err(format!(
+                    "expected {commodity} at {system}/{location} <= {max_val}, got {actual}"
+                ));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
         ScenarioStep::AssertCargo { commodity, min_qty } => {
             let state = harness.observe();
             let actual = state["ship"]["cargo"][commodity.as_str()]

@@ -2,7 +2,9 @@ pub mod gameplay;
 pub mod storage;
 
 pub use gameplay::GameplayPlugin;
-pub use storage::{PlayerState, SqliteStorage, Storage, StorageError};
+pub use storage::{
+    MarketCandle, MarketSnapshot, MarketSupply, PlayerState, SqliteStorage, Storage, StorageError,
+};
 
 use std::net::UdpSocket;
 use std::path::Path;

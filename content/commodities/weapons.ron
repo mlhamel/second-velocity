@@ -1,0 +1,6 @@
+(
+    id: "weapons",
+    name: "Weapons",
+    description: "Small arms and sealed munitions with end-user certificates. The certificates are optional; the seals are not.",
+    icon: Some("textures/commodities/weapons.png"),
+)

@@ -14,8 +14,13 @@ fn base_pack_loads() {
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
     assert_eq!(pack.outfits.len(), 5);
+    assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 12);
+    assert_eq!(pack.scenarios.len(), 13);
+
+    let food = pack.commodity("food").expect("food commodity exists");
+    assert_eq!(food.name, "Foodstuffs");
+    assert_eq!(food.icon.as_deref(), Some("textures/commodities/food.png"));
 
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");

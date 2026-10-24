@@ -1,0 +1,6 @@
+(
+    id: "isotopes",
+    name: "Isotopes",
+    description: "Stable isotopes for reactor fuel and medical scanners. The paperwork glows brighter than the crate.",
+    icon: Some("textures/commodities/isotopes.png"),
+)

@@ -53,6 +53,16 @@
         "outfits/shield-generator-2.ron",
         "outfits/aux-fuel-tank.ron",
     ],
+    commodities: [
+        "commodities/food.ron",
+        "commodities/machinery.ron",
+        "commodities/medicine.ron",
+        "commodities/ore.ron",
+        "commodities/textiles.ron",
+        "commodities/isotopes.ron",
+        "commodities/luxury.ron",
+        "commodities/weapons.ron",
+    ],
     quests: [
         "quests/newhaven-relief.ron",
         "quests/sol-machinery-run.ron",
@@ -80,5 +90,6 @@
         "scenarios/station-delivery-loop.ron",
         "scenarios/shipyard-upgrade.ron",
         "scenarios/outfitter-loadout.ron",
+        "scenarios/market-drift.ron",
     ],
 )

@@ -1,0 +1,6 @@
+(
+    id: "machinery",
+    name: "Machinery",
+    description: "Machine tools, servos, and replacement parts for things that should never have broken in vacuum.",
+    icon: Some("textures/commodities/machinery.png"),
+)

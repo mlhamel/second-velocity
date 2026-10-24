@@ -9,6 +9,8 @@ pub struct Manifest {
     pub systems: Vec<String>,
     pub outfits: Vec<String>,
     #[serde(default)]
+    pub commodities: Vec<String>,
+    #[serde(default)]
     pub quests: Vec<String>,
     #[serde(default)]
     pub scenarios: Vec<String>,

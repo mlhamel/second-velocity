@@ -42,6 +42,34 @@ impl Default for PlayerState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MarketSupply {
+    pub system: String,
+    pub port: String,
+    pub commodity: String,
+    pub supply: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MarketCandle {
+    pub day: u32,
+    pub system: String,
+    pub port: String,
+    pub commodity: String,
+    pub open: u32,
+    pub high: u32,
+    pub low: u32,
+    pub close: u32,
+    pub volume: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MarketSnapshot {
+    pub elapsed_secs: f32,
+    pub supplies: Vec<MarketSupply>,
+    pub candles: Vec<MarketCandle>,
+}
+
 #[derive(Debug)]
 pub enum StorageError {
     Sql(rusqlite::Error),
@@ -81,6 +109,8 @@ pub trait Storage: Send + Sync + 'static {
         password: &str,
     ) -> Result<Option<PlayerState>, StorageError>;
     fn save_player(&self, username: &str, state: &PlayerState) -> Result<(), StorageError>;
+    fn load_market(&self) -> Result<MarketSnapshot, StorageError>;
+    fn save_market(&self, snapshot: &MarketSnapshot) -> Result<(), StorageError>;
     fn close(&self);
 }
 
@@ -106,6 +136,23 @@ impl SqliteStorage {
                 armor REAL NOT NULL DEFAULT 25,
                 active_quests_json TEXT NOT NULL DEFAULT '[]',
                 equipped_outfits_json TEXT
+            );
+            CREATE TABLE IF NOT EXISTS market_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                elapsed_secs REAL NOT NULL DEFAULT 0,
+                supplies_json TEXT NOT NULL DEFAULT '[]'
+            );
+            CREATE TABLE IF NOT EXISTS market_candles (
+                day INTEGER NOT NULL,
+                system TEXT NOT NULL,
+                port TEXT NOT NULL,
+                commodity TEXT NOT NULL,
+                open INTEGER NOT NULL,
+                high INTEGER NOT NULL,
+                low INTEGER NOT NULL,
+                close INTEGER NOT NULL,
+                volume INTEGER NOT NULL,
+                PRIMARY KEY (day, system, port, commodity)
             );",
         )?;
         Self::migrate_columns(&conn)?;
@@ -279,12 +326,186 @@ impl Storage for SqliteStorage {
         Ok(())
     }
 
+    fn load_market(&self) -> Result<MarketSnapshot, StorageError> {
+        let conn = self.conn.lock().unwrap();
+        let state: Option<(f32, String)> = conn
+            .query_row(
+                "SELECT elapsed_secs, supplies_json FROM market_state WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((elapsed_secs, supplies_json)) = state else {
+            return Ok(MarketSnapshot::default());
+        };
+        let supplies: Vec<MarketSupply> = serde_json::from_str(&supplies_json).unwrap_or_default();
+        let mut stmt = conn.prepare(
+            "SELECT day, system, port, commodity, open, high, low, close, volume
+             FROM market_candles
+             WHERE day = (SELECT MAX(day) FROM market_candles)",
+        )?;
+        let candles = stmt
+            .query_map([], |row| {
+                Ok(MarketCandle {
+                    day: row.get(0)?,
+                    system: row.get(1)?,
+                    port: row.get(2)?,
+                    commodity: row.get(3)?,
+                    open: row.get(4)?,
+                    high: row.get(5)?,
+                    low: row.get(6)?,
+                    close: row.get(7)?,
+                    volume: row.get(8)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(MarketSnapshot {
+            elapsed_secs,
+            supplies,
+            candles,
+        })
+    }
+
+    fn save_market(&self, snapshot: &MarketSnapshot) -> Result<(), StorageError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        Self::save_market_locked(&tx, snapshot)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn close(&self) {}
+}
+
+impl SqliteStorage {
+    fn save_market_locked(
+        conn: &Connection,
+        snapshot: &MarketSnapshot,
+    ) -> Result<(), StorageError> {
+        let supplies_json =
+            serde_json::to_string(&snapshot.supplies).unwrap_or_else(|_| "[]".into());
+        conn.execute(
+            "INSERT INTO market_state (id, elapsed_secs, supplies_json)
+             VALUES (1, ?1, ?2)
+             ON CONFLICT(id) DO UPDATE SET
+                elapsed_secs = excluded.elapsed_secs,
+                supplies_json = excluded.supplies_json",
+            params![snapshot.elapsed_secs, supplies_json],
+        )?;
+        let mut stmt = conn.prepare(
+            "INSERT INTO market_candles (day, system, port, commodity, open, high, low, close, volume)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(day, system, port, commodity) DO UPDATE SET
+                open = excluded.open,
+                high = excluded.high,
+                low = excluded.low,
+                close = excluded.close,
+                volume = excluded.volume",
+        )?;
+        for candle in &snapshot.candles {
+            stmt.execute(params![
+                candle.day,
+                candle.system,
+                candle.port,
+                candle.commodity,
+                candle.open,
+                candle.high,
+                candle.low,
+                candle.close,
+                candle.volume,
+            ])?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn market_snapshot_roundtrips_and_upserts() {
+        let storage = SqliteStorage::open_memory().expect("open");
+        assert_eq!(
+            storage.load_market().expect("empty load"),
+            MarketSnapshot::default()
+        );
+
+        let snapshot = MarketSnapshot {
+            elapsed_secs: 2_678_400.0,
+            supplies: vec![MarketSupply {
+                system: "sol".into(),
+                port: "earth".into(),
+                commodity: "food".into(),
+                supply: -40,
+            }],
+            candles: vec![MarketCandle {
+                day: 31,
+                system: "sol".into(),
+                port: "earth".into(),
+                commodity: "food".into(),
+                open: 8,
+                high: 10,
+                low: 7,
+                close: 9,
+                volume: 120,
+            }],
+        };
+        storage.save_market(&snapshot).expect("save");
+        assert_eq!(storage.load_market().expect("reload"), snapshot);
+
+        let mut updated = snapshot.clone();
+        updated.elapsed_secs = 2_678_430.0;
+        updated.supplies[0].supply = -36;
+        updated.candles[0].close = 8;
+        storage.save_market(&updated).expect("upsert");
+        let reloaded = storage.load_market().expect("reload after upsert");
+        assert_eq!(reloaded, updated);
+        let rows = storage
+            .conn
+            .lock()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM market_candles", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap();
+        assert_eq!(rows, 1, "upsert must not duplicate candle rows");
+    }
+
+    #[test]
+    fn market_load_returns_only_the_latest_day() {
+        let storage = SqliteStorage::open_memory().expect("open");
+        let candle = |day, commodity: &str| MarketCandle {
+            day,
+            system: "sol".into(),
+            port: "earth".into(),
+            commodity: commodity.into(),
+            open: 8,
+            high: 8,
+            low: 8,
+            close: 8,
+            volume: 0,
+        };
+        storage
+            .save_market(&MarketSnapshot {
+                elapsed_secs: 86_400.0,
+                supplies: Vec::new(),
+                candles: vec![candle(0, "food"), candle(1, "food"), candle(1, "ore")],
+            })
+            .expect("save");
+        let snapshot = storage.load_market().expect("reload");
+        let mut commodities: Vec<_> = snapshot
+            .candles
+            .iter()
+            .map(|c| c.commodity.clone())
+            .collect();
+        commodities.sort();
+        assert_eq!(
+            commodities,
+            vec!["food".to_owned(), "ore".to_owned()],
+            "only the newest day may load into live state"
+        );
+    }
 
     #[test]
     fn create_and_login() {

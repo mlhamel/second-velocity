@@ -349,16 +349,25 @@ impl Harness {
         };
 
         let market = {
-            let content = self.server.world().resource::<Content>();
+            let mut ports = self
+                .server
+                .world_mut()
+                .query::<(&evr_protocol::DockableTag, &evr_protocol::PortMarket)>();
             docked
                 .as_ref()
-                .and_then(|d| content.0.dockable(&d.system, &d.location))
-                .map(|planet| {
-                    planet
-                        .commodities()
-                        .iter()
-                        .map(|c| serde_json::json!({ "id": c.id, "price": c.price }))
-                        .collect::<Vec<_>>()
+                .and_then(|d| {
+                    ports
+                        .iter(self.server.world())
+                        .find(|(tag, _)| tag.system == d.system && tag.id == d.location)
+                        .map(|(_, prices)| {
+                            prices
+                                .prices
+                                .iter()
+                                .map(|entry| {
+                                    serde_json::json!({ "id": entry.commodity, "price": entry.price })
+                                })
+                                .collect::<Vec<_>>()
+                        })
                 })
                 .unwrap_or_default()
         };
