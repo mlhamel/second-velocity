@@ -3,6 +3,7 @@ mod hud;
 mod input;
 mod minimap;
 mod screenshots;
+mod shops;
 mod sky;
 mod sky_gen;
 mod textures;
@@ -101,6 +102,7 @@ fn main() {
         input::InputPlugin,
         hud::HudPlugin,
         chief::ChiefPlugin,
+        shops::ShopsPlugin,
         screenshots::ScreenshotPlugin,
         minimap::MinimapPlugin,
         sky::SkyPlugin,

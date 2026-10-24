@@ -2,9 +2,8 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use evr_data::ContentPack;
 use evr_protocol::{
-    BuyCommodity, ChiefEncounter, DockableTag, DockedAt, HailShip, Position, RequestDock,
-    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
-    ShipInfo, SystemMembership,
+    ChiefEncounter, DockableTag, DockedAt, HailShip, Position, RequestDock, RequestLiftOff,
+    RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
 use evr_server::gameplay::LAND_RANGE;
 
@@ -112,11 +111,10 @@ const DIGIT_KEYS: [KeyCode; 5] = [
 ];
 
 #[allow(clippy::type_complexity)]
-fn poll_action_input(
+pub(crate) fn poll_action_input(
     my_id: Res<MyNetworkId>,
     keys: Res<ButtonInput<KeyCode>>,
     mut commands: Commands,
-    content: Res<ClientContent>,
     chief_panel: Option<Res<ChiefPanelState>>,
     ships: Query<(
         &ShipInfo,
@@ -160,7 +158,7 @@ fn poll_action_input(
         commands.client_trigger(HailShip);
     }
 
-    let panel_open = chief_panel.is_some_and(|s| s.visible) && encounter.is_some();
+    let panel_open = chief_panel.is_some_and(|s| s.visible);
     if panel_open && let Some(enc) = encounter {
         for (index, option) in enc.options.iter().enumerate() {
             if let Some(&digit) = DIGIT_KEYS.get(index)
@@ -171,36 +169,6 @@ fn poll_action_input(
                     choice: option.id.clone(),
                 });
                 return;
-            }
-        }
-        return;
-    }
-
-    let Some(docked) = docked else {
-        return;
-    };
-
-    let Some(planet) = content.0.dockable(&docked.system, &docked.location) else {
-        return;
-    };
-    for (index, commodity) in planet.commodities().iter().enumerate() {
-        let Some(&digit) = DIGIT_KEYS.get(index) else {
-            continue;
-        };
-        if keys.just_pressed(digit) {
-            let selling = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-            if selling {
-                info!("client: SellCommodity({}, 1)", commodity.id);
-                commands.client_trigger(SellCommodity {
-                    commodity: commodity.id.clone(),
-                    qty: 1,
-                });
-            } else {
-                info!("client: BuyCommodity({}, 1)", commodity.id);
-                commands.client_trigger(BuyCommodity {
-                    commodity: commodity.id.clone(),
-                    qty: 1,
-                });
             }
         }
     }

@@ -30,7 +30,6 @@ struct HudLayout {
     stats_line: Entity,
     quest_line: Entity,
     prompt_line: Entity,
-    trade_block: Entity,
     notice_line: Entity,
     banner_line: Entity,
     shield_fill: Entity,
@@ -56,7 +55,6 @@ struct HudEntities {
     stats_line: Option<Entity>,
     quest_line: Option<Entity>,
     prompt_line: Option<Entity>,
-    trade_block: Option<Entity>,
     notice_line: Option<Entity>,
     banner_line: Option<Entity>,
     shield_fill: Option<Entity>,
@@ -140,7 +138,7 @@ fn spawn_hud(mut commands: Commands) {
             ids.fuel_fill = Some(spawn_bar(root, "fuel", Color::srgb(0.5, 0.9, 0.4)));
             ids.quest_line = Some(spawn_text(root, "", 14.0, AMBER));
             ids.prompt_line = Some(spawn_text(root, "", 15.0, CYAN));
-            ids.trade_block = Some(spawn_text(root, "", 15.0, VALUE));
+            crate::shops::spawn_panel(root);
         });
 
     commands
@@ -186,7 +184,6 @@ fn spawn_hud(mut commands: Commands) {
         stats_line: ids.stats_line.expect("hud entities must exist"),
         quest_line: ids.quest_line.expect("hud entities must exist"),
         prompt_line: ids.prompt_line.expect("hud entities must exist"),
-        trade_block: ids.trade_block.expect("hud entities must exist"),
         notice_line: ids.notice_line.expect("hud entities must exist"),
         banner_line: ids.banner_line.expect("hud entities must exist"),
         shield_fill: ids.shield_fill.expect("hud entities must exist"),
@@ -256,7 +253,6 @@ fn update_hud(
         set_text(&mut texts, layout.stats_line, String::new());
         set_text(&mut texts, layout.quest_line, String::new());
         set_text(&mut texts, layout.prompt_line, String::new());
-        set_text(&mut texts, layout.trade_block, String::new());
         set_bar(&mut nodes, layout.shield_fill, 0.0);
         set_bar(&mut nodes, layout.armor_fill, 0.0);
         set_bar(&mut nodes, layout.fuel_fill, 0.0);
@@ -336,29 +332,7 @@ fn update_hud(
     );
 
     let mut prompts = Vec::new();
-    let mut trade = String::new();
     if let Some(docked_at) = docked {
-        trade.push_str(&format!("docked at {}\n", docked_at.location));
-        let planet = content.0.dockable(&docked_at.system, &docked_at.location);
-        if let Some(planet) = planet {
-            for (index, commodity) in planet.commodities().iter().enumerate() {
-                let held = account
-                    .cargo
-                    .iter()
-                    .find(|(id, _)| id == &commodity.id)
-                    .map(|(_, qty)| qty)
-                    .copied()
-                    .unwrap_or(0);
-                trade.push_str(&format!(
-                    "  {}  buy {} @ {} cr (hold {}) — shift+{} sell\n",
-                    index + 1,
-                    commodity.id,
-                    commodity.price,
-                    held,
-                    index + 1
-                ));
-            }
-        }
         prompts.push("U — undock".to_owned());
         if encounter.is_some() {
             prompts.push(
@@ -391,7 +365,6 @@ fn update_hud(
         prompts.push("J — warp drive".to_owned());
     }
     set_text(&mut texts, layout.prompt_line, prompts.join("   "));
-    set_text(&mut texts, layout.trade_block, trade);
 }
 
 fn set_notice(texts: &mut Query<&mut Text>, layout: &HudLayout, board: &Noticeboard) {

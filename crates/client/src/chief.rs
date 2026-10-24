@@ -34,7 +34,13 @@ impl Plugin for ChiefPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChiefPanelState>()
             .add_systems(Startup, spawn_chief_panel)
-            .add_systems(Update, (sync_chief_panel, animate_chief_portrait).chain());
+            .add_systems(
+                Update,
+                (sync_chief_panel, animate_chief_portrait)
+                    .chain()
+                    .before(crate::input::poll_action_input)
+                    .before(crate::shops::ShopSystems),
+            );
     }
 }
 

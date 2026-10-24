@@ -42,6 +42,84 @@ impl Plugin for VisualsPlugin {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bevy::asset::AssetPlugin;
+    use evr_data::{ContentPack, ShipSize};
+
+    #[test]
+    fn hull_swap_refreshes_existing_sprite_and_resets_damage_baseline() {
+        let mut content = ContentPack::load_dir(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content"),
+        )
+        .expect("fixture content");
+        let mut old = content.ship("shuttle").unwrap().clone();
+        old.sprite = None;
+        old.size = ShipSize::Light;
+        let mut replacement = old.clone();
+        replacement.id = "visual-test-heavy".into();
+        replacement.size = ShipSize::Heavy;
+        content.ships.retain(|ship| ship.id != old.id);
+        content.ships.extend([old, replacement]);
+
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()))
+            .init_asset::<Image>()
+            .insert_resource(ClientContent(content))
+            .insert_resource(Textures {
+                ship: default(),
+                planet: default(),
+                station: default(),
+                star: default(),
+                black_hole: default(),
+                glow: default(),
+                chief: default(),
+                meteorites: default(),
+            })
+            .add_systems(Update, (attach_ship_visuals, detect_hits).chain());
+        let entity = app
+            .world_mut()
+            .spawn((
+                Remote,
+                ShipInfo {
+                    def_id: "shuttle".into(),
+                    kind: ShipKind::Player,
+                    owner: Some(1),
+                    name: "Test ship".into(),
+                },
+                Hull {
+                    shields: 40.0,
+                    max_shields: 40.0,
+                    armor: 25.0,
+                    max_armor: 25.0,
+                },
+            ))
+            .id();
+        app.update();
+        assert_eq!(
+            app.world().get::<Sprite>(entity).unwrap().custom_size,
+            Some(Vec2::splat(ShipSize::Light.world_size())),
+        );
+        app.world_mut().get_mut::<ShipInfo>(entity).unwrap().def_id = "visual-test-heavy".into();
+        app.world_mut().get_mut::<Hull>(entity).unwrap().shields = 20.0;
+        app.update();
+        assert_eq!(
+            app.world().get::<Sprite>(entity).unwrap().custom_size,
+            Some(Vec2::splat(ShipSize::Heavy.world_size())),
+        );
+        let flash = app.world().get::<FlashState>(entity).unwrap();
+        assert_eq!(flash.remaining, 0.0, "a hull swap is not a combat hit");
+        assert_eq!(flash.last_shields, 20.0);
+        app.world_mut().get_mut::<Hull>(entity).unwrap().shields = 19.0;
+        app.update();
+        assert_eq!(
+            app.world().get::<FlashState>(entity).unwrap().remaining,
+            FLASH_SECS
+        );
+    }
+}
+
 #[derive(Component)]
 struct ShipVisual;
 
@@ -91,17 +169,17 @@ fn kind_color(kind: ShipKind) -> Color {
     }
 }
 
-type AddedShips<'w, 's> =
-    Query<'w, 's, (Entity, &'static ShipInfo, &'static Hull), (Added<ShipInfo>, With<Remote>)>;
+type ChangedShips<'w, 's> =
+    Query<'w, 's, (Entity, &'static ShipInfo, &'static Hull), (Changed<ShipInfo>, With<Remote>)>;
 
 fn attach_ship_visuals(
     mut commands: Commands,
     textures: Res<Textures>,
     asset_server: Res<AssetServer>,
     content: Res<ClientContent>,
-    added: AddedShips,
+    changed: ChangedShips,
 ) {
-    for (entity, info, hull) in &added {
+    for (entity, info, hull) in &changed {
         let ship_def = content.0.ship(&info.def_id);
         let world_px = ship_def.map_or(44.0, |def| def.size.world_size());
         let (image, base_color) = match ship_def.and_then(|def| def.sprite.clone()) {
