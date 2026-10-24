@@ -17,6 +17,7 @@ use evr_protocol::{
 
 use crate::Content;
 
+pub mod contracts;
 pub mod market;
 mod progression;
 use progression::*;
@@ -283,6 +284,7 @@ impl Plugin for GameplayPlugin {
             .init_resource::<PirateRespawn>()
             .init_resource::<EncounterRng>()
             .init_resource::<market::MarketState>()
+            .init_resource::<contracts::ContractBoard>()
             .add_observer(on_set_throttle)
             .add_observer(on_set_turn)
             .add_observer(on_set_firing)
@@ -308,6 +310,7 @@ impl Plugin for GameplayPlugin {
                         sync_docked_ships,
                         market::economy_tick,
                         market::flush_market_news,
+                        contracts::contract_refresh,
                     )
                         .chain(),
                     apply_ship_control,
@@ -2343,6 +2346,7 @@ fn on_request_land(
     mut commands: Commands,
     clients: Query<&NetworkId>,
     content: Res<Content>,
+    board: Res<contracts::ContractBoard>,
     mut rng: ResMut<EncounterRng>,
     mut ships: DockingShips,
     ports: Query<(&DockableTag, &Position)>,
@@ -2367,6 +2371,7 @@ fn on_request_land(
             &content.0,
             &mut rng,
             &mut ships,
+            &board,
         );
     } else {
         notice(
@@ -2383,6 +2388,7 @@ fn on_request_dock(
     mut commands: Commands,
     clients: Query<&NetworkId>,
     content: Res<Content>,
+    board: Res<contracts::ContractBoard>,
     mut rng: ResMut<EncounterRng>,
     mut ships: DockingShips,
     ports: Query<(&DockableTag, &Position)>,
@@ -2402,6 +2408,7 @@ fn on_request_dock(
             &content.0,
             &mut rng,
             &mut ships,
+            &board,
         );
     } else {
         notice(
@@ -2422,6 +2429,7 @@ fn try_dock(
     pack: &ContentPack,
     rng: &mut EncounterRng,
     ships: &mut DockingShips,
+    board: &contracts::ContractBoard,
 ) {
     let Some((
         ship_entity,
@@ -2497,7 +2505,7 @@ fn try_dock(
     let empty_quests = ActiveQuests::default();
     let quests = active_quests.unwrap_or(&empty_quests);
     if let Some((encounter, pending)) =
-        roll_chief_encounter(pack, rng, &membership.0, &port.id, &wallet.0, quests)
+        roll_chief_encounter(pack, rng, &membership.0, &port.id, &wallet.0, quests, board)
     {
         commands.entity(ship_entity).insert((encounter, pending));
     }
@@ -2510,6 +2518,7 @@ fn roll_chief_encounter(
     planet_id: &str,
     account: &Account,
     active_quests: &ActiveQuests,
+    board: &contracts::ContractBoard,
 ) -> Option<(ChiefEncounter, PendingEncounter)> {
     let port_def = pack.dockable(system_id, planet_id)?;
     let chief = port_def.host()?;
@@ -2557,7 +2566,7 @@ fn roll_chief_encounter(
         return Some((encounter, pending));
     }
 
-    let available_quests: Vec<&QuestDef> = pack
+    let authored_quests: Vec<&QuestDef> = pack
         .quests
         .iter()
         .filter(|q| {
@@ -2567,6 +2576,19 @@ fn roll_chief_encounter(
                 && !active_quests.completed.contains(&q.id)
         })
         .collect();
+    let available_quests: Vec<&QuestDef> = if authored_quests.is_empty() {
+        board
+            .contracts
+            .iter()
+            .filter(|q| {
+                q.giver.0 == system_id
+                    && q.giver.1 == planet_id
+                    && !active_quests.quests.iter().any(|aq| aq.id == q.id)
+            })
+            .collect()
+    } else {
+        authored_quests
+    };
 
     let roll = rng.next_u32(100);
     if !available_quests.is_empty() && roll < 50 {
@@ -2927,6 +2949,7 @@ fn on_respond_to_encounter(
     mut commands: Commands,
     clients: Query<&NetworkId>,
     content: Res<Content>,
+    board: Res<contracts::ContractBoard>,
     mut ships: EncounterShips,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
@@ -3086,7 +3109,14 @@ fn on_respond_to_encounter(
             quest_id,
         } => match resolved_choice {
             "accept_quest" => {
-                let Some(quest_def) = content.0.quest(&quest_id) else {
+                let authored = content.0.quest(&quest_id);
+                let procedural = authored.is_none();
+                let Some(quest_def) = authored.or_else(|| {
+                    board
+                        .contracts
+                        .iter()
+                        .find(|contract| contract.id == *quest_id)
+                }) else {
                     return;
                 };
                 let target = match &quest_def.kind {
@@ -3125,6 +3155,7 @@ fn on_respond_to_encounter(
                     target,
                     reward_credits: quest_def.reward_credits,
                     remaining_secs: quest_def.kind.deadline_secs().map(|s| s as f32),
+                    procedural,
                 });
                 notice(
                     &mut commands,
@@ -3170,7 +3201,7 @@ fn on_respond_to_encounter(
                     return;
                 }
                 active_quests.quests.remove(pos);
-                if !active_quests.completed.contains(&quest.id) {
+                if !quest.procedural && !active_quests.completed.contains(&quest.id) {
                     active_quests.completed.push(quest.id.clone());
                 }
                 wallet.0.credits += quest.reward_credits;
@@ -3406,6 +3437,7 @@ mod tests {
         EMBEDDED_CLIENT_ID, PROTOCOL_ID, TickMode, attach_memory, attach_udp, build_server_app,
     };
 
+    mod contracts;
     mod market;
     mod progression;
     mod stations;

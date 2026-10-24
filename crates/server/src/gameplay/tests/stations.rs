@@ -436,6 +436,7 @@ fn station_master_turns_in_completed_bounties() {
                 },
                 reward_credits: 600,
                 remaining_secs: None,
+                procedural: false,
             }],
             completed: vec![],
         });

@@ -204,6 +204,8 @@ pub struct ActiveQuest {
     pub target: QuestTarget,
     pub reward_credits: u32,
     pub remaining_secs: Option<f32>,
+    #[serde(default)]
+    pub procedural: bool,
 }
 
 #[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -491,6 +493,7 @@ mod tests {
                 },
                 reward_credits: 450,
                 remaining_secs: Some(120.0),
+                procedural: false,
             }],
             completed: vec!["old-quest".into()],
         });
