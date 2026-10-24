@@ -139,6 +139,17 @@ pub struct DockedAt {
     pub kind: DockableKind,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MarketPrice {
+    pub commodity: String,
+    pub price: u32,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PortMarket {
+    pub prices: Vec<MarketPrice>,
+}
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountState {
     pub credits: u32,
@@ -354,6 +365,7 @@ pub fn register(app: &mut App) {
         .replicate::<ChiefEncounter>()
         .replicate::<ActiveQuests>()
         .replicate::<Meteorite>()
+        .replicate::<PortMarket>()
         .add_client_event::<SetThrottle>(Channel::Ordered)
         .add_client_event::<SetTurn>(Channel::Ordered)
         .add_client_event::<SetFiring>(Channel::Ordered)
@@ -402,6 +414,18 @@ mod tests {
             system: "sol".into(),
             location: "lin-relay".into(),
             kind: DockableKind::Station,
+        });
+        roundtrip(PortMarket {
+            prices: vec![
+                MarketPrice {
+                    commodity: "food".into(),
+                    price: 8,
+                },
+                MarketPrice {
+                    commodity: "isotopes".into(),
+                    price: 90,
+                },
+            ],
         });
         roundtrip(Position(Vec2::new(12.5, -3.25)));
         roundtrip(Heading(1.25));
