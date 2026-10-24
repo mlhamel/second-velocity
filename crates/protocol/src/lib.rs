@@ -17,6 +17,26 @@ pub struct Hull {
     pub max_armor: f32,
 }
 
+#[derive(Component, Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct EquippedOutfits {
+    pub ids: Vec<String>,
+}
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BuyShip {
+    pub ship: String,
+}
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BuyOutfit {
+    pub outfit: String,
+}
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SellOutfit {
+    pub outfit: String,
+}
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Fuel {
     pub current: f32,
@@ -330,6 +350,7 @@ pub fn register(app: &mut App) {
         .replicate::<SystemMembership>()
         .replicate::<DockedAt>()
         .replicate::<AccountState>()
+        .replicate::<EquippedOutfits>()
         .replicate::<ChiefEncounter>()
         .replicate::<ActiveQuests>()
         .replicate::<Meteorite>()
@@ -340,6 +361,9 @@ pub fn register(app: &mut App) {
         .add_client_event::<RequestDock>(Channel::Ordered)
         .add_client_event::<RequestLiftOff>(Channel::Ordered)
         .add_client_event::<BuyCommodity>(Channel::Ordered)
+        .add_client_event::<BuyShip>(Channel::Ordered)
+        .add_client_event::<BuyOutfit>(Channel::Ordered)
+        .add_client_event::<SellOutfit>(Channel::Ordered)
         .add_client_event::<SellCommodity>(Channel::Ordered)
         .add_client_event::<SetWarp>(Channel::Ordered)
         .add_client_event::<RespondToEncounter>(Channel::Ordered)
@@ -364,6 +388,9 @@ mod tests {
 
     #[test]
     fn components_roundtrip() {
+        roundtrip(EquippedOutfits {
+            ids: vec!["light-blaster".into(), "shield-generator-1".into()],
+        });
         roundtrip(DockableTag {
             system: "sol".into(),
             id: "lin-relay".into(),
@@ -454,6 +481,15 @@ mod tests {
 
     #[test]
     fn events_roundtrip() {
+        roundtrip(BuyShip {
+            ship: "terran-courier".into(),
+        });
+        roundtrip(BuyOutfit {
+            outfit: "pulse-blaster".into(),
+        });
+        roundtrip(SellOutfit {
+            outfit: "light-blaster".into(),
+        });
         roundtrip(RequestDock {
             system: "sol".into(),
             location: "lin-relay".into(),
