@@ -62,17 +62,18 @@ quests, SQLite persistence, govt-zone PvP) but every loop dead-ends today:
       shape change warrants one
 - [x] Full validation battery + @review
 
-## Phase 2 — Living markets: the world moves while you sleep
+## Phase 2 — Living markets: the world moves while you sleep (done)
 
-- [ ] Per-port supply/demand counters; player trades move supply
-- [ ] Economy tick (minutes, server-side — not per trade), prices drift from
+- [x] Per-port supply/demand counters; player trades move supply
+- [x] Economy tick (minutes, server-side — not per trade), prices drift from
       list price by supply (shared-economy.md is the design source)
-- [ ] NPC merchant fleets feed the model (they already haul commodities —
+- [x] NPC merchant fleets feed the model (they already haul commodities —
       tie their trades into supply)
-- [ ] News notices ("Isotope demand spikes at Vega") + persisted market log
-- [ ] Arbitrage damping: simple, tuned for friends scale
-- [ ] Commodity definitions move to `content/commodities/`
-- [ ] Scenario: `market-drift.ron` (flood a port, assert price moves);
+- [x] News notices ("Isotope demand spikes at Vega") + persisted market log
+      (daily OHLCV candles — nothing finer is stored, nothing is deleted)
+- [x] Arbitrage damping: simple, tuned for friends scale
+- [x] Commodity definitions move to `content/commodities/`
+- [x] Scenario: `market-drift.ron` (flood a port, assert price moves);
       tolerance review of existing trade scenarios (credits asserts may need
       ranges); full battery + @review
 
