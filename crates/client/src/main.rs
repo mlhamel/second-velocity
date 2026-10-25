@@ -46,7 +46,7 @@ fn send_login(
         return;
     }
     *sent = true;
-    commands.client_trigger(evr_protocol::LoginRequest {
+    commands.client_trigger(sv_protocol::LoginRequest {
         username: credentials.username.clone(),
         password: credentials.password.clone(),
     });
@@ -78,7 +78,7 @@ fn main() {
                     bevy::log::Level::INFO
                 },
                 filter: if verbose {
-                    "evr_client=trace,evr_server=trace,evr_protocol=debug,bevy_replicon=debug,wgpu=error,naga=warn,bevy_render=info".to_owned()
+                    "sv_client=trace,sv_server=trace,sv_protocol=debug,bevy_replicon=debug,wgpu=error,naga=warn,bevy_render=info".to_owned()
                 } else {
                     bevy::log::DEFAULT_FILTER.to_owned()
                 },
@@ -100,7 +100,7 @@ fn main() {
     );
     app.add_plugins(RepliconPlugins);
     app.add_plugins(RepliconRenetPlugins);
-    evr_protocol::register(&mut app);
+    sv_protocol::register(&mut app);
 
     app.add_plugins((
         visuals::VisualsPlugin,
@@ -156,7 +156,7 @@ fn main() {
                 current_time,
                 ClientAuthentication::Unsecure {
                     client_id,
-                    protocol_id: evr_server::PROTOCOL_ID,
+                    protocol_id: sv_server::PROTOCOL_ID,
                     socket_id: 0,
                     server_addr,
                     user_data: None,
@@ -165,22 +165,22 @@ fn main() {
             )
             .expect("client transport must be valid");
             app.insert_resource(transport);
-            println!("evr-client: connecting to {server_addr} as {client_id}");
+            println!("second-velocity: connecting to {server_addr} as {client_id}");
             client_id
         }
         None => {
             app.add_systems(First, step_embedded_server);
             let mut server_app =
-                evr_server::build_server_app("content", evr_server::TickMode::Fixed, None)
+                sv_server::build_server_app("content", sv_server::TickMode::Fixed, None)
                     .expect("content pack must load");
-            let (transport, _socket) = evr_server::attach_memory(&mut server_app);
+            let (transport, _socket) = sv_server::attach_memory(&mut server_app);
             server_app.finish();
             app.insert_resource(transport);
             app.insert_non_send(EmbeddedServer(server_app));
-            evr_server::EMBEDDED_CLIENT_ID as u64
+            sv_server::EMBEDDED_CLIENT_ID as u64
         }
     };
-    let content_pack = evr_data::ContentPack::load_dir(std::path::Path::new("content"))
+    let content_pack = sv_data::ContentPack::load_dir(std::path::Path::new("content"))
         .expect("content pack must load");
     app.insert_resource(input::ClientContent(content_pack));
     app.insert_resource(MyNetworkId(my_id));

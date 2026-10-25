@@ -10,13 +10,13 @@ use bevy_replicon_renet2::netcode::{
 };
 use bevy_replicon_renet2::renet2::{ConnectionConfig, RenetClient, RenetServer};
 use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
-use evr_protocol::{
+use sv_protocol::{
     AccountState, ActiveQuests, BuyCommodity, ChiefEncounter, ChiefMood, DockedAt, HailShip,
     Heading, Hull, Meteorite, Notice, PlanetTag, PlayerDied, Position, Projectile, QuestTarget,
     RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle,
     SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
-use evr_server::{
+use sv_server::{
     Content, EMBEDDED_CLIENT_ID, TickMode, attach_memory, build_server_app,
     memory_reconnect_transport,
 };
@@ -54,7 +54,7 @@ impl Harness {
         client.add_plugins(StatesPlugin);
         client.add_plugins(RepliconPlugins.set(ServerPlugin::new(PostUpdate)));
         client.add_plugins(RepliconRenetPlugins);
-        evr_protocol::register(&mut client);
+        sv_protocol::register(&mut client);
         client.init_resource::<NoticeLog>();
         client.add_observer(record_notice);
         client.add_observer(record_death);
@@ -230,7 +230,7 @@ impl Harness {
     pub fn dock(&mut self, system: &str, location: &str) {
         self.client
             .world_mut()
-            .client_trigger(evr_protocol::RequestDock {
+            .client_trigger(sv_protocol::RequestDock {
                 system: system.to_owned(),
                 location: location.to_owned(),
             });
@@ -257,7 +257,7 @@ impl Harness {
     pub fn buy_ship(&mut self, ship: &str) {
         self.client
             .world_mut()
-            .client_trigger(evr_protocol::BuyShip {
+            .client_trigger(sv_protocol::BuyShip {
                 ship: ship.to_owned(),
             });
     }
@@ -265,7 +265,7 @@ impl Harness {
     pub fn buy_outfit(&mut self, outfit: &str) {
         self.client
             .world_mut()
-            .client_trigger(evr_protocol::BuyOutfit {
+            .client_trigger(sv_protocol::BuyOutfit {
                 outfit: outfit.to_owned(),
             });
     }
@@ -273,14 +273,14 @@ impl Harness {
     pub fn sell_outfit(&mut self, outfit: &str) {
         self.client
             .world_mut()
-            .client_trigger(evr_protocol::SellOutfit {
+            .client_trigger(sv_protocol::SellOutfit {
                 outfit: outfit.to_owned(),
             });
     }
 
     /// Scenario-only fixture, intentionally not exposed as an MCP tool.
     pub fn scenario_credits(&mut self, credits: u32) {
-        evr_server::gameplay::set_scenario_credits(
+        sv_server::gameplay::set_scenario_credits(
             self.server.world_mut(),
             EMBEDDED_CLIENT_ID as u64,
             credits,
@@ -312,7 +312,7 @@ impl Harness {
         let my_ship = {
             let mut state = self.server.world_mut().query::<(
                 &ShipInfo,
-                &evr_server::gameplay::Ship,
+                &sv_server::gameplay::Ship,
                 &SystemMembership,
                 Option<&DockedAt>,
                 Option<&AccountState>,
@@ -352,7 +352,7 @@ impl Harness {
             let mut ports = self
                 .server
                 .world_mut()
-                .query::<(&evr_protocol::DockableTag, &evr_protocol::PortMarket)>();
+                .query::<(&sv_protocol::DockableTag, &sv_protocol::PortMarket)>();
             docked
                 .as_ref()
                 .and_then(|d| {
@@ -513,7 +513,7 @@ impl Harness {
             let mut query = self
                 .server
                 .world_mut()
-                .query::<(&ShipInfo, &evr_protocol::EquippedOutfits)>();
+                .query::<(&ShipInfo, &sv_protocol::EquippedOutfits)>();
             query
                 .iter(self.server.world())
                 .find(|(info, _)| info.owner == Some(owner))
@@ -532,10 +532,10 @@ impl Harness {
             let outfitter = port.and_then(|p| p.outfitter()).map(|shop| shop.outfits.iter().filter_map(|id| content.outfit(id))
                 .map(|o| {
                     let effect = match &o.kind {
-                        evr_data::OutfitKind::Weapon(w) => serde_json::json!({"kind":"weapon","damage":w.damage,"cooldown":w.cooldown}),
-                        evr_data::OutfitKind::ShieldGenerator { max_shields } => serde_json::json!({"kind":"shield","max_shields":max_shields}),
-                        evr_data::OutfitKind::FuelTank { fuel } => serde_json::json!({"kind":"fuel","fuel":fuel}),
-                        evr_data::OutfitKind::ArmorPlate { armor } => serde_json::json!({"kind":"armor","armor":armor}),
+                        sv_data::OutfitKind::Weapon(w) => serde_json::json!({"kind":"weapon","damage":w.damage,"cooldown":w.cooldown}),
+                        sv_data::OutfitKind::ShieldGenerator { max_shields } => serde_json::json!({"kind":"shield","max_shields":max_shields}),
+                        sv_data::OutfitKind::FuelTank { fuel } => serde_json::json!({"kind":"fuel","fuel":fuel}),
+                        sv_data::OutfitKind::ArmorPlate { armor } => serde_json::json!({"kind":"armor","armor":armor}),
                     };
                     serde_json::json!({"id":o.id,"name":o.name,"price":o.price,"effect":effect,
                         "installed":equipped.iter().filter(|id| **id == o.id).count()})
@@ -550,10 +550,10 @@ impl Harness {
             let mut query = self
                 .server
                 .world_mut()
-                .query::<(&evr_protocol::DockableTag, &Position)>();
+                .query::<(&sv_protocol::DockableTag, &Position)>();
             query
                 .iter(self.server.world())
-                .filter(|(port, _)| port.kind == evr_protocol::DockableKind::Station)
+                .filter(|(port, _)| port.kind == sv_protocol::DockableKind::Station)
                 .map(|(port, position)| {
                     serde_json::json!({
                         "id": port.id, "system": port.system, "name": port.name,
@@ -567,7 +567,7 @@ impl Harness {
             let mut query = self
                 .server
                 .world_mut()
-                .query::<(&evr_protocol::BlackHoleTag, &Position)>();
+                .query::<(&sv_protocol::BlackHoleTag, &Position)>();
             query
                 .iter(self.server.world())
                 .map(|(hole, position)| {

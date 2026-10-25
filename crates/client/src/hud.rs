@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
-use evr_protocol::{
+use sv_protocol::{
     AccountState, ActiveQuests, ChiefEncounter, DockableKind, DockableTag, DockedAt, Fuel, Hull,
     Notice, PlayerDied, Position, QuestTarget, ShipInfo, SystemMembership,
 };
-use evr_server::gameplay::LAND_RANGE;
+use sv_server::gameplay::LAND_RANGE;
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;

@@ -24,7 +24,8 @@ pub fn capture_readme_screenshots(root: &Path, client: &Path) -> Result<Vec<Stri
         .map_err(|_| "a screenshot capture is already running".to_owned())?;
     if !client.is_file() {
         return Err(
-            "build evr-client alongside evr-mcp first: cargo build -p evr-client -p evr-mcp".into(),
+            "build the client alongside the MCP server first: cargo build -p sv-client -p sv-mcp"
+                .into(),
         );
     }
     let nonce = SystemTime::now()
@@ -122,7 +123,7 @@ mod tests {
 
     #[test]
     fn incomplete_tour_does_not_replace_existing_images() {
-        let root = std::env::temp_dir().join(format!("evr-capture-publish-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("sv-capture-publish-{}", std::process::id()));
         let staging = root.join("staging");
         let destination = root.join("published");
         fs::create_dir_all(&staging).unwrap();

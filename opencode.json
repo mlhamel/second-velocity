@@ -1,9 +1,9 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "evr-game": {
+    "sv-game": {
       "type": "local",
-      "command": ["cargo", "run", "-p", "evr-mcp"],
+      "command": ["cargo", "run", "-p", "sv-mcp"],
       "enabled": true
     }
   },

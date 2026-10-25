@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use evr_data::{ContentError, ContentPack};
+use sv_data::{ContentError, ContentPack};
 
 const DUPLICATE_SHIP: &str = r#"( id: "dupe", name: "Dupe", description: "", price: 1, mass: 1.0, turn_rate: 1.0, acceleration: 1.0, max_speed: 1.0, max_shields: 1.0, max_armor: 1.0, fuel: 1, cargo: 1, weapon_slots: 1 )"#;
 
@@ -10,7 +10,7 @@ fn base_pack_loads() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let pack = ContentPack::load_dir(&root).expect("base pack must load");
 
-    assert_eq!(pack.manifest.id, "evr-base");
+    assert_eq!(pack.manifest.id, "sv-base");
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
     assert_eq!(pack.outfits.len(), 5);
@@ -25,14 +25,14 @@ fn base_pack_loads() {
     let shuttle = pack.ship("shuttle").expect("shuttle exists");
     assert_eq!(shuttle.name, "Shuttle");
     assert_eq!(shuttle.race, "terran");
-    assert_eq!(shuttle.size, evr_data::ShipSize::Light);
+    assert_eq!(shuttle.size, sv_data::ShipSize::Light);
     assert_eq!(shuttle.default_outfits, vec!["light-blaster".to_owned()]);
 
     let dreadnought = pack
         .ship("korath-dreadnought")
         .expect("korath-dreadnought exists");
     assert_eq!(dreadnought.race, "korath");
-    assert_eq!(dreadnought.size, evr_data::ShipSize::Capital);
+    assert_eq!(dreadnought.size, sv_data::ShipSize::Capital);
 
     let sol = pack.system("sol").expect("sol exists");
     assert_eq!(sol.government, "confederation");
@@ -100,7 +100,7 @@ fn base_pack_loads() {
     assert!(!trade_scenario.steps.is_empty());
 
     let blaster = pack.outfit("light-blaster").expect("light-blaster exists");
-    let evr_data::OutfitKind::Weapon(weapon) = &blaster.kind else {
+    let sv_data::OutfitKind::Weapon(weapon) = &blaster.kind else {
         panic!("light blaster must be a weapon")
     };
     assert!(weapon.damage > 0.0);
@@ -173,7 +173,7 @@ fn star_placements_keep_heat_zones_clear() {
 
 #[test]
 fn duplicate_ids_are_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -194,7 +194,7 @@ fn duplicate_ids_are_rejected() {
 
 #[test]
 fn unknown_outfit_reference_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-ref-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-ref-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -218,7 +218,7 @@ fn unknown_outfit_reference_is_rejected() {
 
 #[test]
 fn missing_sprite_asset_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-sprite-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-sprite-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -245,7 +245,7 @@ fn missing_sprite_asset_is_rejected() {
 
 #[test]
 fn missing_outfit_icon_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-icon-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-icon-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -272,7 +272,7 @@ fn missing_outfit_icon_is_rejected() {
 
 #[test]
 fn invalid_asset_paths_are_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-asset-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-asset-test-{}", std::process::id()));
     let assets = dir.join("assets/textures");
     let content = dir.join("content");
     fs::create_dir_all(&assets).expect("dirs must be creatable");
@@ -319,7 +319,7 @@ fn invalid_asset_paths_are_rejected() {
 
 #[test]
 fn non_reciprocal_links_are_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-link-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-link-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -354,7 +354,7 @@ fn non_reciprocal_links_are_rejected() {
 
 #[test]
 fn unknown_quest_planet_reference_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-quest-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-quest-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -389,7 +389,7 @@ fn unknown_quest_planet_reference_is_rejected() {
 
 #[test]
 fn missing_chief_portrait_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-chief-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-chief-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
@@ -416,7 +416,7 @@ fn missing_chief_portrait_is_rejected() {
 
 #[test]
 fn unknown_scenario_reference_is_rejected() {
-    let dir = std::env::temp_dir().join(format!("evr-data-scenario-test-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-data-scenario-test-{}", std::process::id()));
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),

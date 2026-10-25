@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_protocol::{
+use sv_protocol::{
     BlackHoleTag, DockableKind, DockableTag, Heading, Position, ShipInfo, ShipKind, StarTag,
     SystemMembership,
 };

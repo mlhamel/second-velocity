@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use evr_data::{ContentError, ContentPack, OutfitDef, OutfitKind};
+use sv_data::{ContentError, ContentPack, OutfitDef, OutfitKind};
 
 #[test]
 fn loadouts_recompute_from_base_and_enforce_category_and_weapon_limits() {
@@ -84,7 +84,7 @@ fn fixture(
     defaults: &str,
     step: &str,
 ) -> Result<ContentPack, ContentError> {
-    let dir = std::env::temp_dir().join(format!("evr-progression-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sv-progression-{name}-{}", std::process::id()));
     fs::create_dir_all(&dir).unwrap();
     fs::write(dir.join("manifest.ron"), r#"(id:"t",name:"T",version:(0,1,0),ships:["ship.ron"],systems:["system.ron"],outfits:["outfit.ron"],scenarios:["scenario.ron"])"#).unwrap();
     fs::write(dir.join("ship.ron"), format!(r#"(id:"s",name:"S",description:"",price:1,mass:1.0,turn_rate:1.0,acceleration:1.0,max_speed:1.0,max_shields:1.0,max_armor:1.0,fuel:1,cargo:1,weapon_slots:1,default_outfits:[{defaults}])"#)).unwrap();

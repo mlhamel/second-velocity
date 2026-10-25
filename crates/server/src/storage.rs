@@ -612,10 +612,8 @@ mod tests {
 
     #[test]
     fn legacy_schema_migrates_active_quests_column() {
-        let path = std::env::temp_dir().join(format!(
-            "evr-storage-migrate-test-{}.db",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("sv-storage-migrate-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).expect("open legacy db");

@@ -1,14 +1,14 @@
 ---
 name: benchmark-scenarios
-description: Build playbook for the game scenario benchmark and integration testing system powered by evr-mcp. Use when implementing, running, or extending automated gameplay benchmarks and scenario-driven integration tests.
+description: Build playbook for the game scenario benchmark and integration testing system powered by sv-mcp. Use when implementing, running, or extending automated gameplay benchmarks and scenario-driven integration tests.
 ---
 
 # Benchmark scenarios — MCP-driven gameplay benchmarks & integration tests
 
 Feature: declarative gameplay scenarios (`content/scenarios/<id>.ron`) executed
-through the `evr-mcp` harness that serve simultaneously as **end-to-end
-integration tests** (`cargo test -p evr-mcp`) and **performance/gameplay
-benchmarks** (`cargo run -p evr-mcp -- --bench` / MCP `run_scenario` tool).
+through the `sv-mcp` harness that serve simultaneously as **end-to-end
+integration tests** (`cargo test -p sv-mcp`) and **performance/gameplay
+benchmarks** (`cargo run -p sv-mcp -- --bench` / MCP `run_scenario` tool).
 Every new gameplay feature ships with a scenario.
 
 All design decisions below are locked with the owner. Update this file as
@@ -18,16 +18,16 @@ phases complete.
 
 - **Scenarios are content (`content/scenarios/`)**: authored in RON, listed in
   `content/manifest.ron` (`#[serde(default)] pub scenarios: Vec<String>`), and
-  cross-reference-validated by `evr-data` at pack load time (ADR-0002).
+  cross-reference-validated by `sv-data` at pack load time (ADR-0002).
 - **Single source of truth for integration tests + benchmarks**: the same
   `.ron` scenario drives functional assertions in `cargo test` and collects
   timing + entity + gameplay metrics in benchmark mode.
 - **Feature policy**: any new gameplay feature must include a scenario in
   `content/scenarios/` and pass both `make test` and `make bench`.
 - **Three execution entrypoints**:
-  1. `cargo test -p evr-mcp` — runs all scenarios in `content/manifest.ron` and
+  1. `cargo test -p sv-mcp` — runs all scenarios in `content/manifest.ron` and
      asserts every step and invariant passes.
-  2. `cargo run -p evr-mcp -- --bench [scenario_id] [--json]` (aliased as
+  2. `cargo run -p sv-mcp -- --bench [scenario_id] [--json]` (aliased as
      `make bench`) — runs one or all scenarios and prints a Markdown table (or
      JSON report) with tick latency percentiles, entity load, and gameplay stats.
   3. MCP tool `run_scenario(id)` — lets connected AI agents execute a named
@@ -127,10 +127,10 @@ phases complete.
 
 ### 4. MCP tool, CLI mode & Makefile (`crates/mcp/src/main.rs`, `Makefile`)
 
-- If `evr-mcp` is invoked with `--bench [scenario_id] [--json]`, it runs the
+- If `sv-mcp` is invoked with `--bench [scenario_id] [--json]`, it runs the
   benchmark suite headlessly without starting the stdio MCP server, prints a
   formatted Markdown table (or JSON), and exits non-zero if any scenario fails.
-- When running as an MCP server, `evr-mcp` exposes `run_scenario(id?: String)`
+- When running as an MCP server, `sv-mcp` exposes `run_scenario(id?: String)`
   so agents can run benchmarks on demand.
 - `Makefile` gains `make bench` (and `make bench-json`).
 
@@ -139,11 +139,11 @@ phases complete.
 1. **Content schema & starter scenarios**: `crates/data/src/scenario.rs`,
    `scenarios` in `Manifest`, loader cross-reference validation, pack tests,
    3 starter `.ron` scenarios in `content/scenarios/`, and `add-scenario` skill.
-   Verify: `cargo test -p evr-data`
+   Verify: `cargo test -p sv-data`
 2. **Timed harness & scenario runner**: `TickSample` instrumentation in
    `crates/mcp/src/harness.rs`, scenario executor + percentile aggregator +
    Markdown/JSON formatter in `crates/mcp/src/benchmark.rs`.
-   Verify: `cargo test -p evr-mcp`
+   Verify: `cargo test -p sv-mcp`
 3. **MCP tool, CLI `--bench`, integration test & Makefile**: `--bench` flag and
    `run_scenario` tool in `crates/mcp/src/main.rs`, `all_pack_scenarios_pass`
    in `crates/mcp/tests/playthrough.rs`, `make bench` in `Makefile`.

@@ -1,6 +1,6 @@
 use bevy::image::{ImageLoaderSettings, ImageSampler};
 use bevy::prelude::*;
-use evr_protocol::{ChiefEncounter, ChiefMood, ShipInfo};
+use sv_protocol::{ChiefEncounter, ChiefMood, ShipInfo};
 
 use crate::MyNetworkId;
 use crate::textures::Textures;

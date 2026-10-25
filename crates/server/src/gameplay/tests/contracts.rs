@@ -1,17 +1,17 @@
 use super::progression::ready;
 use super::*;
 use crate::gameplay::contracts::{self, ContractBoard};
-use evr_protocol::{ChiefEncounter, ChiefMood, RespondToEncounter};
+use sv_protocol::{ChiefEncounter, ChiefMood, RespondToEncounter};
 
 fn synthetic_board(h: &mut Harness, giver: (&str, &str), destination: (&str, &str)) {
     h.server
         .world_mut()
         .resource_mut::<ContractBoard>()
-        .contracts = vec![evr_data::QuestDef {
+        .contracts = vec![sv_data::QuestDef {
         id: "contract-0".into(),
         name: "Synthetic Parcel".into(),
         giver: (giver.0.into(), giver.1.into()),
-        kind: evr_data::QuestKind::Delivery {
+        kind: sv_data::QuestKind::Delivery {
             commodity: "food".into(),
             qty: 3,
             destination: (destination.0.into(), destination.1.into()),
@@ -38,13 +38,13 @@ fn dock_port(h: &mut Harness, system: &str, port: &str) {
     for _ in 0..30 {
         h.step();
     }
-    h.send(evr_protocol::RequestDock {
+    h.send(sv_protocol::RequestDock {
         system: system.into(),
         location: port.into(),
     });
 }
 
-fn active_quest(h: &mut Harness) -> Option<evr_protocol::ActiveQuest> {
+fn active_quest(h: &mut Harness) -> Option<sv_protocol::ActiveQuest> {
     h.server
         .world_mut()
         .query::<(&Owner, &ActiveQuests)>()
@@ -103,7 +103,7 @@ fn contract_offers_accept_refresh_and_turn_in_without_completing_the_ledger() {
         "refreshing must replace the board but keep the accepted job"
     );
 
-    h.send(evr_protocol::RequestLiftOff);
+    h.send(sv_protocol::RequestLiftOff);
     for _ in 0..10 {
         h.step();
     }
@@ -151,7 +151,7 @@ fn authored_quests_keep_priority_over_board_contracts() {
     for _ in 0..10 {
         h.step();
     }
-    h.send(evr_protocol::RequestLand {
+    h.send(sv_protocol::RequestLand {
         planet: "earth".into(),
     });
     h.step_until(200, |h| {

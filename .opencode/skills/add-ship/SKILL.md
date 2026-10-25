@@ -13,6 +13,6 @@ description: Add a new ship definition to content/ and validate the pack
 2. Add `"ships/<id>.ron"` to `ships:` in `content/manifest.ron`
 3. Server spawn wiring (if needed): constants in
    `crates/server/src/gameplay.rs` (PLAYER_SHIP, PIRATE_SHIP) or spawn logic
-4. Validate: `cargo test -p evr-data` (loads the pack, checks
+4. Validate: `cargo test -p sv-data` (loads the pack, checks
    cross-references and duplicate ids)
 5. Verify: `cargo clippy --workspace -- -D warnings`

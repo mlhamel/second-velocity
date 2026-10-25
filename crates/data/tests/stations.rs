@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use evr_data::{ContentError, ContentPack, DockableDef, StationPlacement};
+use sv_data::{ContentError, ContentPack, DockableDef, StationPlacement};
 
 fn fixture(
     name: &str,
@@ -19,7 +19,7 @@ fn fixture_at(
     steps: &str,
     origin: &str,
 ) -> Result<ContentPack, ContentError> {
-    let root = std::env::temp_dir().join(format!("evr-stations-{name}-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("sv-stations-{name}-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let quests = if quest.is_some() {
         r#"["q.ron"]"#
@@ -217,7 +217,7 @@ fn shipped_stations_and_complete_orbits_clear_planets_and_lethal_hazards() {
                 for planet in &other.planets {
                     assert!(
                         (distance(other.planet_position(&planet.id).unwrap()) - orbit).abs()
-                            > station.radius + evr_data::PLANET_RADIUS + 20.0
+                            > station.radius + sv_data::PLANET_RADIUS + 20.0
                     );
                 }
                 if let Some(star) = &other.star {

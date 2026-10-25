@@ -8,15 +8,15 @@ single-player.
 ## Commands
 
 - build: `cargo build --workspace`
-- test: `cargo test --workspace` (single crate: `cargo test -p evr-core`)
-- benchmark scenarios: `make bench` or `cargo run -p evr-mcp -- --bench [scenario_id] [--json]`
+- test: `cargo test --workspace` (single crate: `cargo test -p sv-core`)
+- benchmark scenarios: `make bench` or `cargo run -p sv-mcp -- --bench [scenario_id] [--json]`
 - lint: `cargo clippy --workspace -- -D warnings`
 - format: `cargo fmt --all` (check: `cargo fmt --all --check`)
 - commit check: `cog check` or `make commit-check` (install git hooks: `make hooks` / `cog install-hook --all`)
-- run server: `cargo run -p evr-server [port] [--storage path.db] [--verbose]` (standalone shard; UDP, defaults to 3456; SQLite persistence with --storage)
-- run client online: `cargo run -p evr-client -- --connect host:port [--username name] [--password pw] [--verbose]`
-- run client: `cargo run -p evr-client [-- --verbose]` (desktop session required)
-- capture screenshots: `cargo run -p evr-client -- --capture-tour` (F12 in-game)
+- run server: `cargo run -p sv-server [port] [--storage path.db] [--verbose]` (standalone shard; UDP, defaults to 3456; SQLite persistence with --storage)
+- run client online: `cargo run -p sv-client -- --connect host:port [--username name] [--password pw] [--verbose]`
+- run client: `cargo run -p sv-client [-- --verbose]` (desktop session required)
+- capture screenshots: `cargo run -p sv-client -- --capture-tour` (F12 in-game)
 
 ## Structure
 
@@ -26,9 +26,9 @@ single-player.
   is called identically by client and server (protocol hash must match)
 - `crates/server` — authoritative simulation app; storage trait + SQLite persistence; login gate
 - `crates/client` — Bevy desktop app
-- `crates/mcp` — evr-mcp: the game as an MCP server (agents play the sim
+- `crates/mcp` — sv-mcp: the game as an MCP server (agents play the sim
   via observe/set_flight/land/lift_off/trade/jump/advance/run_scenario); registered as
-  evr-game in opencode.json
+  sv-game in opencode.json
 - `content/` — RON content packs; data, never code
 - `assets/` — textures referenced by content sprite fields; placeholders generated via ops/generate_placeholder_art.py (see docs/gdd/art-guide.md)
 - `docs/gdd/` — canonical game design; README is the index
@@ -45,11 +45,11 @@ single-player.
 - Every new gameplay feature must ship with a benchmark & integration test scenario in `content/scenarios/` (see `.opencode/skills/add-scenario/SKILL.md`).
 - Server is authoritative. Clients send intents (`crates/protocol`); they never
   mutate game state.
-- Offline play = the client embeds the server app (NonSendMut in evr-client) over a memory
+- Offline play = the client embeds the server app (NonSendMut in sv-client) over a memory
   transport; no second code path. Online play swaps the transport for UDP; same wire protocol.
 - Server app must be finished AFTER attaching its transport (attach_memory/attach_udp);
   build_server_app does not call finish() itself.
-- `evr-core` stays Bevy-free and I/O-free. Presentation belongs in `evr-client`.
+- `sv-core` stays Bevy-free and I/O-free. Presentation belongs in `sv-client`.
 - Bevy/replicon/renet2 versions are pinned together (read docs/decisions/0005
   before upgrading). rustc >= 1.95 required by bevy 0.19.
 - In-game text follows `docs/gdd/writing-style.md`.

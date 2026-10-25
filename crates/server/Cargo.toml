@@ -1,8 +1,12 @@
 [package]
-name = "evr-server"
+name = "sv-server"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[[bin]]
+name = "second-velocity-server"
+path = "src/main.rs"
 
 [dependencies]
 bevy = { workspace = true, default-features = false, features = [
@@ -14,9 +18,9 @@ bevy = { workspace = true, default-features = false, features = [
 ] }
 bevy_replicon.workspace = true
 bevy_replicon_renet2.workspace = true
-evr-core.workspace = true
-evr-data.workspace = true
-evr-protocol.workspace = true
+sv-core.workspace = true
+sv-data.workspace = true
+sv-protocol.workspace = true
 argon2.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

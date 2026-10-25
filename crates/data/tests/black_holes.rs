@@ -1,10 +1,10 @@
 use std::fs;
 use std::path::Path;
 
-use evr_data::{ContentError, ContentPack};
+use sv_data::{ContentError, ContentPack};
 
 fn fixture(name: &str, hole: &str, steps: &str) -> Result<ContentPack, ContentError> {
-    let root = std::env::temp_dir().join(format!("evr-black-hole-{name}-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("sv-black-hole-{name}-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
         root.join("manifest.ron"),

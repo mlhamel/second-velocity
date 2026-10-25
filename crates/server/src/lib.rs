@@ -22,7 +22,7 @@ use bevy_replicon_renet2::netcode::{
 };
 use bevy_replicon_renet2::renet2::{ConnectionConfig, RenetServer};
 use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
-use evr_data::{ContentError, ContentPack};
+use sv_data::{ContentError, ContentPack};
 
 pub const TICK_RATE: f32 = 60.0;
 pub const PROTOCOL_ID: u64 = 1;
@@ -58,7 +58,7 @@ pub fn build_server_app(
     }
     app.add_plugins(RepliconRenetPlugins);
 
-    evr_protocol::register(&mut app);
+    sv_protocol::register(&mut app);
 
     let pack = ContentPack::load_dir(content_root.as_ref())?;
     app.insert_resource(Content(pack));

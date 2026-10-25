@@ -1,6 +1,6 @@
 ---
 name: add-scenario
-description: Add a new gameplay benchmark and integration test scenario to content/scenarios/ and verify it with evr-mcp
+description: Add a new gameplay benchmark and integration test scenario to content/scenarios/ and verify it with sv-mcp
 ---
 
 # Add a benchmark scenario
@@ -25,9 +25,9 @@ latency, entity load, and gameplay efficiency.
      "<id>")` docks when already nearby. `AssertDocked(Some("<station-id>"))`
      works for stations too. Explicit docking checks the complete system/ID.
 3. Validate content schema and cross-references:
-   `cargo test -p evr-data`
+   `cargo test -p sv-data`
 4. Run the scenario as a benchmark and integration test:
-   `cargo run -p evr-mcp -- --bench <id>` (or `make bench`) and
-   `cargo test -p evr-mcp`
+   `cargo run -p sv-mcp -- --bench <id>` (or `make bench`) and
+   `cargo test -p sv-mcp`
 5. Verify lints:
    `cargo clippy --workspace --all-targets -- -D warnings`

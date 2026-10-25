@@ -1,10 +1,10 @@
 use std::f64::consts::PI;
 use std::path::Path;
 
-use evr_mcp::Harness;
-use evr_protocol::ShipInfo;
-use evr_server::EMBEDDED_CLIENT_ID;
 use serde_json::Value;
+use sv_mcp::Harness;
+use sv_protocol::ShipInfo;
+use sv_server::EMBEDDED_CLIENT_ID;
 
 fn steer_to(target: [f64; 2], position: [f64; 2], heading: f64) -> (f32, f32) {
     let dx = target[0] - position[0];
@@ -33,7 +33,7 @@ fn station_observation_and_docking_survive_reconnect() {
         let mut query = harness
             .server
             .world_mut()
-            .query::<(&ShipInfo, &mut evr_server::gameplay::Ship)>();
+            .query::<(&ShipInfo, &mut sv_server::gameplay::Ship)>();
         for (info, mut ship) in query.iter_mut(harness.server.world_mut()) {
             if info.owner == Some(EMBEDDED_CLIENT_ID as u64) {
                 ship.0.position = bevy::math::Vec2::new(
@@ -315,9 +315,9 @@ fn quest_loop_playthrough() {
 #[test]
 fn all_pack_scenarios_pass() {
     let content = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
-    let reports = evr_mcp::run_scenarios(&content, None).expect("scenarios must load and run");
+    let reports = sv_mcp::run_scenarios(&content, None).expect("scenarios must load and run");
     assert_eq!(reports.len(), 14);
-    println!("\n{}", evr_mcp::format_markdown_table(&reports));
+    println!("\n{}", sv_mcp::format_markdown_table(&reports));
     for report in &reports {
         assert!(
             report.passed,

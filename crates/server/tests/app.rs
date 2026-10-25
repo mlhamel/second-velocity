@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use evr_server::{Content, TickMode, build_server_app};
+use sv_server::{Content, TickMode, build_server_app};
 
 #[test]
 fn server_app_loads_base_pack() {

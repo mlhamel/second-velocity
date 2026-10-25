@@ -1,5 +1,5 @@
 use super::*;
-use evr_protocol::{BuyOutfit, BuyShip, SellOutfit};
+use sv_protocol::{BuyOutfit, BuyShip, SellOutfit};
 
 pub(super) fn weapon_banks(pack: &ContentPack, ids: &[String]) -> WeaponBanks {
     WeaponBanks(

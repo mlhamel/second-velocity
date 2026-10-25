@@ -13,7 +13,7 @@ footprints, and the game picks them up automatically.
    `sprite: Some("textures/ships/shuttle.png")` in a ship or planet
    definition, or `icon: Some("textures/outfits/light-blaster.png")` on an
    outfit / port commodity entry (paths are relative to `assets/`).
-2. Pack validation (`cargo test -p evr-data`) fails if a referenced file
+2. Pack validation (`cargo test -p sv-data`) fails if a referenced file
    is missing — no dangling art references, ever.
 3. The client loads the PNG at spawn. If a definition has no `sprite` field,
    the game falls back to a procedural texture generated at the same native

@@ -1,11 +1,11 @@
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_data::ContentPack;
-use evr_protocol::{
+use sv_data::ContentPack;
+use sv_protocol::{
     ChiefEncounter, DockableTag, DockedAt, HailShip, Position, RequestDock, RequestLiftOff,
     RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
-use evr_server::gameplay::LAND_RANGE;
+use sv_server::gameplay::LAND_RANGE;
 
 use crate::MyNetworkId;
 use crate::chief::ChiefPanelState;

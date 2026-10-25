@@ -113,11 +113,11 @@ MCP idle reconnect.
 1. Docs: ADR-0009 (docking encounters + quests as content),
    docs/gdd/encounters.md, amend core-loops.md venue (bars → planet chiefs)
 2. Content schema: quest.rs, ChiefDef, manifest, loader validation, pack
-   tests, placeholder art, add-quest skill. Verify: cargo test -p evr-data
+   tests, placeholder art, add-quest skill. Verify: cargo test -p sv-data
 3. Server engine: encounter roll, RespondToEncounter observer, quest
-   state + turn-in, storage migration. Verify: cargo test -p evr-server
+   state + turn-in, storage migration. Verify: cargo test -p sv-server
 4. Client scene: chief.rs panel + animation, HUD quest line, input keys.
-   Verify: cargo build -p evr-client + clippy
+   Verify: cargo build -p sv-client + clippy
 5. MCP + tests + tour: observe keys, respond tool, playthrough quest loop
    test (dock → accept → deliver → reward), tour capture stage.
    Verify: cargo test --workspace, cargo clippy -D warnings

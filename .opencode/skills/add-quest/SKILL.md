@@ -24,7 +24,7 @@ description: Add a new quest definition, planet chief, or station master to cont
 3. If adding a chief or station master portrait, place a 128×128 RGBA PNG at
    `assets/textures/chiefs/<location-id>.png` (or add a row in
    `ops/generate_placeholder_art.py` and run it)
-4. Validate: `cargo test -p evr-data` (checks manifest paths, unique quest ids,
+4. Validate: `cargo test -p sv-data` (checks manifest paths, unique quest ids,
    giver/destination docking-location references, target system references, and host
    portrait assets)
 5. Verify: `cargo clippy --workspace -- -D warnings`

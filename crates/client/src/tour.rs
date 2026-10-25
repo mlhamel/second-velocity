@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::math::Vec2;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_protocol::{
+use sv_protocol::{
     BuyCommodity, ChiefEncounter, DockableKind, DockableTag, DockedAt, Heading, PlanetTag,
     Position, RequestLand, RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo,
     ShipKind, StarTag, SystemMembership,

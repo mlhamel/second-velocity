@@ -2590,77 +2590,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "evr-client"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet2",
- "evr-data",
- "evr-protocol",
- "evr-server",
-]
-
-[[package]]
-name = "evr-core"
-version = "0.1.0"
-dependencies = [
- "glam",
-]
-
-[[package]]
-name = "evr-data"
-version = "0.1.0"
-dependencies = [
- "ron",
- "serde",
-]
-
-[[package]]
-name = "evr-mcp"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet2",
- "evr-core",
- "evr-data",
- "evr-protocol",
- "evr-server",
- "rmcp",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "evr-protocol"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bevy_replicon",
- "ron",
- "serde",
-]
-
-[[package]]
-name = "evr-server"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "bevy",
- "bevy_replicon",
- "bevy_replicon_renet2",
- "evr-core",
- "evr-data",
- "evr-protocol",
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5301,6 +5230,77 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "sv-client"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet2",
+ "sv-data",
+ "sv-protocol",
+ "sv-server",
+]
+
+[[package]]
+name = "sv-core"
+version = "0.1.0"
+dependencies = [
+ "glam",
+]
+
+[[package]]
+name = "sv-data"
+version = "0.1.0"
+dependencies = [
+ "ron",
+ "serde",
+]
+
+[[package]]
+name = "sv-mcp"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet2",
+ "rmcp",
+ "schemars",
+ "serde",
+ "serde_json",
+ "sv-core",
+ "sv-data",
+ "sv-protocol",
+ "sv-server",
+ "tokio",
+]
+
+[[package]]
+name = "sv-protocol"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_replicon",
+ "ron",
+ "serde",
+]
+
+[[package]]
+name = "sv-server"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet2",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sv-core",
+ "sv-data",
+ "sv-protocol",
+]
 
 [[package]]
 name = "svg_fmt"

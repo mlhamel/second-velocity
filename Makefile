@@ -36,33 +36,33 @@ build: ## Build all workspace crates (debug)
 build-release: ## Build all workspace crates (release)
 	$(CARGO) build --workspace --release
 
-build-core: ## Build evr-core (headless simulation math)
-	$(CARGO) build -p evr-core
+build-core: ## Build sv-core (headless simulation math)
+	$(CARGO) build -p sv-core
 
-build-data: ## Build evr-data (RON content schema and loader)
-	$(CARGO) build -p evr-data
+build-data: ## Build sv-data (RON content schema and loader)
+	$(CARGO) build -p sv-data
 
-build-protocol: ## Build evr-protocol (replicated components and intents)
-	$(CARGO) build -p evr-protocol
+build-protocol: ## Build sv-protocol (replicated components and intents)
+	$(CARGO) build -p sv-protocol
 
-build-server: ## Build evr-server (standalone authoritative shard)
-	$(CARGO) build -p evr-server
+build-server: ## Build sv-server (standalone authoritative shard)
+	$(CARGO) build -p sv-server
 
-build-client: ## Build evr-client (Bevy desktop client)
-	$(CARGO) build -p evr-client
+build-client: ## Build sv-client (Bevy desktop client)
+	$(CARGO) build -p sv-client
 
-build-mcp: ## Build evr-mcp (MCP agent server)
-	$(CARGO) build -p evr-mcp
+build-mcp: ## Build sv-mcp (MCP agent server)
+	$(CARGO) build -p sv-mcp
 
 ##@ Testing & Verification
 
 check: fmt-check lint commit-check test ## Run full verification suite (fmt-check + clippy + commit-check + workspace tests)
 
 bench: ## Run gameplay benchmark scenarios and print Markdown table (optional SCENARIO=id)
-	$(CARGO) run -p evr-mcp -- --bench $(SCENARIO)
+	$(CARGO) run -p sv-mcp -- --bench $(SCENARIO)
 
 bench-json: ## Run gameplay benchmark scenarios and print JSON report (optional SCENARIO=id)
-	$(CARGO) run -p evr-mcp -- --bench $(SCENARIO) --json
+	$(CARGO) run -p sv-mcp -- --bench $(SCENARIO) --json
 
 commit-check: ## Verify git history follows Conventional Commits (via cocogitto)
 	@if command -v cog >/dev/null 2>&1; then \
@@ -74,23 +74,23 @@ commit-check: ## Verify git history follows Conventional Commits (via cocogitto)
 test: ## Run all unit and integration tests across the workspace
 	$(CARGO) test --workspace
 
-test-core: ## Run evr-core unit tests
-	$(CARGO) test -p evr-core
+test-core: ## Run sv-core unit tests
+	$(CARGO) test -p sv-core
 
-test-data: ## Run evr-data content pack validation tests
-	$(CARGO) test -p evr-data
+test-data: ## Run sv-data content pack validation tests
+	$(CARGO) test -p sv-data
 
-test-protocol: ## Run evr-protocol serialization roundtrip tests
-	$(CARGO) test -p evr-protocol
+test-protocol: ## Run sv-protocol serialization roundtrip tests
+	$(CARGO) test -p sv-protocol
 
-test-server: ## Run evr-server gameplay, networking, and SQLite persistence tests
-	$(CARGO) test -p evr-server
+test-server: ## Run sv-server gameplay, networking, and SQLite persistence tests
+	$(CARGO) test -p sv-server
 
-test-mcp: ## Run evr-mcp integration tests
-	$(CARGO) test -p evr-mcp
+test-mcp: ## Run sv-mcp integration tests
+	$(CARGO) test -p sv-mcp
 
 test-playthrough: ## Run MCP agent playthrough integration tests with output
-	$(CARGO) test -p evr-mcp --test playthrough -- --nocapture
+	$(CARGO) test -p sv-mcp --test playthrough -- --nocapture
 
 lint: ## Run clippy across all workspace targets with warnings denied
 	$(CARGO) clippy --workspace --all-targets -- -D warnings
@@ -108,33 +108,33 @@ fmt-check: ## Check formatting without modifying files
 run: run-client ## Launch offline single-player client (alias for run-client)
 
 run-client: ## Launch Bevy desktop client with embedded server (offline single-player)
-	$(CARGO) run -p evr-client
+	$(CARGO) run -p sv-client
 
 run-verbose: ## Launch offline single-player client with --verbose logging
-	$(CARGO) run -p evr-client -- --verbose
+	$(CARGO) run -p sv-client -- --verbose
 
 run-online: ## Connect client to a shard (override HOST, USER, PASS)
-	$(CARGO) run -p evr-client -- --connect $(HOST) --username $(USER) --password $(PASS)
+	$(CARGO) run -p sv-client -- --connect $(HOST) --username $(USER) --password $(PASS)
 
 run-online-verbose: ## Connect client to a shard with --verbose logging (override HOST, USER, PASS)
-	$(CARGO) run -p evr-client -- --connect $(HOST) --username $(USER) --password $(PASS) --verbose
+	$(CARGO) run -p sv-client -- --connect $(HOST) --username $(USER) --password $(PASS) --verbose
 
 run-server: ## Run standalone UDP server with SQLite persistence (override PORT, DB)
-	$(CARGO) run -p evr-server -- $(PORT) --storage $(DB)
+	$(CARGO) run -p sv-server -- $(PORT) --storage $(DB)
 
 run-server-verbose: ## Run standalone UDP server with SQLite persistence and --verbose logging
-	$(CARGO) run -p evr-server -- $(PORT) --storage $(DB) --verbose
+	$(CARGO) run -p sv-server -- $(PORT) --storage $(DB) --verbose
 
 run-server-ephemeral: ## Run standalone UDP server with in-memory storage (override PORT)
-	$(CARGO) run -p evr-server -- $(PORT)
+	$(CARGO) run -p sv-server -- $(PORT)
 
-run-mcp: ## Run evr-mcp server on stdio
-	$(CARGO) run -p evr-mcp
+run-mcp: ## Run sv-mcp server on stdio
+	$(CARGO) run -p sv-mcp
 
 tour: capture-tour ## Capture automated screenshot tour (alias for capture-tour)
 
 capture-tour: ## Run client in automated screenshot tour mode (outputs to docs/screenshots/)
-	$(CARGO) run -p evr-client -- --capture-tour
+	$(CARGO) run -p sv-client -- --capture-tour
 
 art: placeholder-art ## Regenerate placeholder PNG art assets (alias for placeholder-art)
 

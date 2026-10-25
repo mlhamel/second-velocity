@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use evr_data::{ContentPack, QuestDef, QuestKind};
+use sv_data::{ContentPack, QuestDef, QuestKind};
 
 use super::{EncounterRng, PIRATE_SYSTEM};
 use crate::Content;
@@ -98,10 +98,10 @@ fn generate_contract(
                     commodity,
                     qty,
                     destination: (destination.system.clone(), destination.port.clone()),
-                    deadline_secs: timed.then(|| evr_core::contract::contract_deadline(dist)),
+                    deadline_secs: timed.then(|| sv_core::contract::contract_deadline(dist)),
                 },
-                reward_credits: evr_core::contract::contract_reward(
-                    evr_core::contract::DELIVERY_BASE,
+                reward_credits: sv_core::contract::contract_reward(
+                    sv_core::contract::DELIVERY_BASE,
                     dist,
                     hazard,
                 ),
@@ -126,10 +126,10 @@ fn generate_contract(
         kind: QuestKind::Bounty {
             system: PIRATE_SYSTEM.to_owned(),
             target: "pirate".to_owned(),
-            deadline_secs: timed.then(|| evr_core::contract::contract_deadline(dist)),
+            deadline_secs: timed.then(|| sv_core::contract::contract_deadline(dist)),
         },
-        reward_credits: evr_core::contract::contract_reward(
-            evr_core::contract::BOUNTY_BASE,
+        reward_credits: sv_core::contract::contract_reward(
+            sv_core::contract::BOUNTY_BASE,
             dist,
             hazard,
         ),
@@ -266,7 +266,7 @@ mod tests {
         for contract in &board {
             assert!(
                 contract.reward_credits
-                    >= evr_core::contract::DELIVERY_BASE.min(evr_core::contract::BOUNTY_BASE),
+                    >= sv_core::contract::DELIVERY_BASE.min(sv_core::contract::BOUNTY_BASE),
                 "rewards must respect the curve floor"
             );
             if let QuestKind::Bounty { target, .. } = &contract.kind {

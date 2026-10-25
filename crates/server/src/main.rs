@@ -30,9 +30,9 @@ fn main() {
     }
 
     let content_root = PathBuf::from("content");
-    let mut app = evr_server::build_server_app(
+    let mut app = sv_server::build_server_app(
         content_root,
-        evr_server::TickMode::Fixed,
+        sv_server::TickMode::Fixed,
         storage_path.as_deref(),
     )
     .expect("content pack must load");
@@ -40,21 +40,21 @@ fn main() {
     app.add_plugins(LogPlugin {
         level: if verbose { Level::DEBUG } else { Level::INFO },
         filter: if verbose {
-            "evr_server=trace,evr_protocol=debug,bevy_replicon=debug".to_owned()
+            "sv_server=trace,sv_protocol=debug,bevy_replicon=debug".to_owned()
         } else {
-            "evr_server=info".to_owned()
+            "sv_server=info".to_owned()
         },
         ..Default::default()
     });
 
-    let bound = evr_server::attach_udp(
+    let bound = sv_server::attach_udp(
         &mut app,
         SocketAddr::from(([0, 0, 0, 0], port)),
-        evr_server::MAX_CLIENTS,
+        sv_server::MAX_CLIENTS,
     )
     .expect("udp socket must bind");
     println!(
-        "evr-server: listening on {bound} (verbose={verbose}, storage={:?})",
+        "sv-server: listening on {bound} (verbose={verbose}, storage={:?})",
         storage_path
     );
     app.run();

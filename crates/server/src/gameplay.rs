@@ -4,9 +4,9 @@ use bevy::math::Vec2;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon::shared::backend::connected_client::NetworkId;
-use evr_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
-use evr_data::{ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef};
-use evr_protocol::{
+use sv_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
+use sv_data::{ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef};
+use sv_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
     DockableKind, DockableTag, DockedAt, EncounterOption, EquippedOutfits, Explosion, Fuel,
     HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice,
@@ -34,8 +34,8 @@ pub const JUMP_FUEL_COST: f32 = 25.0;
 pub const DRAG: f32 = 0.4;
 pub const SHIELD_REGEN: f32 = 4.0;
 pub const SHIP_RADIUS: f32 = 14.0;
-pub const PLANET_RADIUS: f32 = evr_data::PLANET_RADIUS;
-pub const PLANET_OFFSET_X: f32 = evr_data::PLANET_OFFSET_X;
+pub const PLANET_RADIUS: f32 = sv_data::PLANET_RADIUS;
+pub const PLANET_OFFSET_X: f32 = sv_data::PLANET_OFFSET_X;
 pub const LAND_RANGE: f32 = 220.0;
 pub const HAIL_RANGE: f32 = 240.0;
 pub const PIRATE_SIGHT_RANGE: f32 = 900.0;
@@ -518,7 +518,7 @@ fn spawn_world(
                     prices: market::port_prices(&market_state, pack, &system.id, &planet.id),
                 },
                 Position(Vec2::new(
-                    system.position.0 + PLANET_OFFSET_X + index as f32 * evr_data::PLANET_SPACING,
+                    system.position.0 + PLANET_OFFSET_X + index as f32 * sv_data::PLANET_SPACING,
                     system.position.1,
                 )),
             ));
@@ -539,7 +539,7 @@ fn spawn_world(
                             .expect("validated orbital parent"),
                     );
                     (
-                        evr_core::orbit_position(center, *radius, *period_secs, *phase, 0.0),
+                        sv_core::orbit_position(center, *radius, *period_secs, *phase, 0.0),
                         Some(StationOrbit {
                             center,
                             radius: *radius,
@@ -653,7 +653,7 @@ fn spawn_world(
 
 fn station_motion(time: Res<Time>, mut stations: Query<(&StationOrbit, &mut Position)>) {
     for (orbit, mut position) in &mut stations {
-        position.0 = evr_core::orbit_position(
+        position.0 = sv_core::orbit_position(
             orbit.center,
             orbit.radius,
             orbit.period_secs,
@@ -1754,7 +1754,7 @@ fn fragment_meteorite(
     commands.entity(entity).despawn();
 
     if let Some(child_size) = meteorite.size.child_size() {
-        let (v1, v2) = evr_core::split_meteorite_velocities(motion.velocity, impact_dir, 22.0);
+        let (v1, v2) = sv_core::split_meteorite_velocities(motion.velocity, impact_dir, 22.0);
         let lateral = (v1 - v2).try_normalize().unwrap_or(Vec2::Y) * (child_size.radius() * 0.9);
         let base_spin = meteorite.spin_rate.abs().max(1.2) * 1.35;
         info!(
@@ -1862,7 +1862,7 @@ fn black_hole_gravity(
         let flight_start = ship.0.position - ship.0.velocity * time.delta_secs();
         for (hole, gravity, position) in &holes {
             let delta = position.0 - ship.0.position;
-            if evr_core::black_hole_horizon_crossed(
+            if sv_core::black_hole_horizon_crossed(
                 flight_start - position.0,
                 ship.0.position - position.0,
                 hole.radius,
@@ -1905,7 +1905,7 @@ fn black_hole_gravity(
                 break;
             }
             ship.0.velocity +=
-                evr_core::black_hole_acceleration(delta, hole.radius, hole.influence, gravity.0)
+                sv_core::black_hole_acceleration(delta, hole.radius, hole.influence, gravity.0)
                     * time.delta_secs();
         }
     }
@@ -3429,7 +3429,7 @@ mod tests {
     };
     use bevy_replicon_renet2::renet2::{ConnectionConfig, RenetClient};
     use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
-    use evr_protocol::AccountState;
+    use sv_protocol::AccountState;
 
     use super::*;
     use crate::storage::Storage;
@@ -3461,7 +3461,7 @@ mod tests {
             client.add_plugins(StatesPlugin);
             client.add_plugins(RepliconPlugins.set(ServerPlugin::new(PostUpdate)));
             client.add_plugins(RepliconRenetPlugins);
-            evr_protocol::register(&mut client);
+            sv_protocol::register(&mut client);
             client.init_resource::<TestNoticeLog>();
             client.add_observer(record_test_notice);
 
@@ -3664,7 +3664,7 @@ mod tests {
     #[test]
     fn login_and_persistence() {
         let storage_path =
-            std::env::temp_dir().join(format!("evr-persist-test-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("sv-persist-test-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&storage_path);
         let content_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../content");
 
@@ -3683,7 +3683,7 @@ mod tests {
         client.add_plugins(StatesPlugin);
         client.add_plugins(RepliconPlugins.set(ServerPlugin::new(PostUpdate)));
         client.add_plugins(RepliconRenetPlugins);
-        evr_protocol::register(&mut client);
+        sv_protocol::register(&mut client);
         let (server_channels, client_channels) = {
             let channels = client.world().resource::<RepliconChannels>();
             (channels.server_configs(), channels.client_configs())
@@ -3714,7 +3714,7 @@ mod tests {
 
         client
             .world_mut()
-            .client_trigger(evr_protocol::LoginRequest {
+            .client_trigger(sv_protocol::LoginRequest {
                 username: "alice".to_owned(),
                 password: "pass123".to_owned(),
             });
@@ -3759,11 +3759,9 @@ mod tests {
             step(&mut server, &mut client);
         }
 
-        client
-            .world_mut()
-            .client_trigger(evr_protocol::RequestLand {
-                planet: "earth".to_owned(),
-            });
+        client.world_mut().client_trigger(sv_protocol::RequestLand {
+            planet: "earth".to_owned(),
+        });
         let mut dock_steps = 0;
         loop {
             step(&mut server, &mut client);
@@ -3781,7 +3779,7 @@ mod tests {
 
         client
             .world_mut()
-            .client_trigger(evr_protocol::BuyCommodity {
+            .client_trigger(sv_protocol::BuyCommodity {
                 commodity: "food".to_owned(),
                 qty: 2,
             });
@@ -3832,7 +3830,7 @@ mod tests {
         app.add_plugins(StatesPlugin);
         app.add_plugins(RepliconPlugins.set(ServerPlugin::new(PostUpdate)));
         app.add_plugins(RepliconRenetPlugins);
-        evr_protocol::register(&mut app);
+        sv_protocol::register(&mut app);
 
         let (server_channels, client_channels) = {
             let channels = app.world().resource::<RepliconChannels>();

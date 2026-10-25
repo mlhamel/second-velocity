@@ -1,6 +1,6 @@
 use bevy::camera::ClearColor;
 use bevy::prelude::*;
-use evr_protocol::{ShipInfo, SystemMembership};
+use sv_protocol::{ShipInfo, SystemMembership};
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;

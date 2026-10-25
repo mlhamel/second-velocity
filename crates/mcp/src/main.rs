@@ -1,4 +1,4 @@
-use evr_mcp::harness::Harness;
+use sv_mcp::harness::Harness;
 
 use std::path::PathBuf;
 
@@ -160,7 +160,7 @@ impl GameMcp {
         self.call(Command::SellOutfit(outfit)).await
     }
     #[tool(
-        description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and evr-client built alongside evr-mcp. Overwrites the four fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
+        description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and the client built alongside the MCP server. Overwrites the four fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
     )]
     async fn capture_screenshots(&self) -> rmcp::model::CallToolResult {
         let result = tokio::task::spawn_blocking(|| {
@@ -172,8 +172,8 @@ impl GameMcp {
                 .to_owned();
             let client = std::env::current_exe()
                 .map_err(|err| err.to_string())?
-                .with_file_name("evr-client");
-            evr_mcp::screenshots::capture_readme_screenshots(&root, &client)
+                .with_file_name("second-velocity");
+            sv_mcp::screenshots::capture_readme_screenshots(&root, &client)
         })
         .await;
         match result.unwrap_or_else(|error| Err(error.to_string())) {
@@ -379,13 +379,11 @@ fn game_thread(content_root: PathBuf, mut rx: mpsc::Receiver<(Command, oneshot::
                 harness.advance(SETTLE_TICKS);
                 json(&harness.observe())
             }
-            Command::RunScenario(id) => {
-                match evr_mcp::run_scenarios(&content_root, id.as_deref()) {
-                    Ok(reports) => serde_json::to_string_pretty(&reports)
-                        .unwrap_or_else(|err| format!("serialize failed: {err}")),
-                    Err(err) => serde_json::json!({ "error": err }).to_string(),
-                }
-            }
+            Command::RunScenario(id) => match sv_mcp::run_scenarios(&content_root, id.as_deref()) {
+                Ok(reports) => serde_json::to_string_pretty(&reports)
+                    .unwrap_or_else(|err| format!("serialize failed: {err}")),
+                Err(err) => serde_json::json!({ "error": err }).to_string(),
+            },
         });
     }
 }
@@ -423,8 +421,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let baseline = compare_path
             .as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|raw| serde_json::from_str::<Vec<evr_mcp::ScenarioReport>>(&raw).ok());
-        let reports = evr_mcp::run_scenarios(&content_root(), filter_id)?;
+            .and_then(|raw| serde_json::from_str::<Vec<sv_mcp::ScenarioReport>>(&raw).ok());
+        let reports = sv_mcp::run_scenarios(&content_root(), filter_id)?;
         let json_str = serde_json::to_string_pretty(&reports)?;
         if let Some(save_path) = save_json_path {
             std::fs::write(save_path, &json_str)?;
@@ -434,7 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             print!(
                 "{}",
-                evr_mcp::format_markdown_table_with_baseline(&reports, baseline.as_deref())
+                sv_mcp::format_markdown_table_with_baseline(&reports, baseline.as_deref())
             );
         }
         if reports.iter().any(|r| !r.passed) {

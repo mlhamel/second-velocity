@@ -1,8 +1,12 @@
 [package]
-name = "evr-mcp"
+name = "sv-mcp"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+
+[[bin]]
+name = "second-velocity-mcp"
+path = "src/main.rs"
 
 [dependencies]
 bevy = { workspace = true, default-features = false, features = [
@@ -13,10 +17,10 @@ bevy = { workspace = true, default-features = false, features = [
 ] }
 bevy_replicon.workspace = true
 bevy_replicon_renet2.workspace = true
-evr-core.workspace = true
-evr-data.workspace = true
-evr-protocol.workspace = true
-evr-server.workspace = true
+sv-core.workspace = true
+sv-data.workspace = true
+sv-protocol.workspace = true
+sv-server.workspace = true
 serde.workspace = true
 serde_json = { workspace = true }
 rmcp = { workspace = true }

@@ -60,7 +60,7 @@ All design decisions align with
     `system.links`, visiting planets and outer system coordinates before
     charting a course to the next star system.
 - **Visiting & Talking (`HailShip`)**:
-  - Pressing `H` in the client (or calling `hail` in `evr-mcp`) within
+  - Pressing `H` in the client (or calling `hail` in `sv-mcp`) within
     `HAIL_RANGE` (`200.0` units) of a non-hostile NPC ship opens the encounter
     communication panel (`ChiefEncounter`) with captain dialog tailored to the
     ship's race and role:
@@ -193,7 +193,7 @@ All design decisions align with
 
 ### 5. MCP & Benchmark Scenario (`crates/mcp` & `content/scenarios/`)
 
-- Add `hail` tool to `evr-mcp` (`Command::Hail`) and include `race`, `size`,
+- Add `hail` tool to `sv-mcp` (`Command::Hail`) and include `race`, `size`,
   and `hostile` in `observe()["ships"]`.
 - Add scenario steps (`HailNearestShip`, `AttackNearestNpc`, `AssertShipHostile`)
   and `content/scenarios/living-galaxy-npcs.ron` verifying:
@@ -209,11 +209,11 @@ All design decisions align with
    and `.opencode/skills/living-galaxy-npcs/SKILL.md`.
 2. **Content & Art (14 new ships + 5 races + 4 sizes)**: `ShipSize` and `race`
    in `crates/data/src/ship.rs`, 14 `content/ships/*.ron` files, sprites in
-   `assets/textures/ships/`, `manifest.ron`. Verify: `cargo test -p evr-data`.
+   `assets/textures/ships/`, `manifest.ron`. Verify: `cargo test -p sv-data`.
 3. **Protocol & Server AI / Hailing / Retaliation**: `ShipKind` variants +
-   `HailShip` in `evr-protocol`; `NpcBrain`, `npc_ai`, defender-vs-pirate
-   combat, universal retaliation on hit, and `on_hail_ship` in `evr-server`.
-   Verify: `cargo test -p evr-server`.
+   `HailShip` in `sv-protocol`; `NpcBrain`, `npc_ai`, defender-vs-pirate
+   combat, universal retaliation on hit, and `on_hail_ship` in `sv-server`.
+   Verify: `cargo test -p sv-server`.
 4. **Client Visuals & Input**: size-based sprite scaling (`36..92 px`), `H` key
    to hail nearby NPCs, HUD hail indicator. Verify: `cargo clippy --workspace -- -D warnings`.
 5. **MCP & Benchmark Scenario**: `hail` MCP tool, `content/scenarios/living-galaxy-npcs.ron`.

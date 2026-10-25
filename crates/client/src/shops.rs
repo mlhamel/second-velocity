@@ -2,8 +2,8 @@ use bevy::image::{ImageLoaderSettings, ImageSampler};
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_data::{ContentPack, OutfitKind};
-use evr_protocol::{
+use sv_data::{ContentPack, OutfitKind};
+use sv_protocol::{
     AccountState, BuyCommodity, BuyOutfit, BuyShip, DockableTag, DockedAt, EquippedOutfits,
     PortMarket, SellCommodity, SellOutfit, ShipInfo,
 };
@@ -822,7 +822,7 @@ mod tests {
         let docked = DockedAt {
             system: "sol".into(),
             location: "station".into(),
-            kind: evr_protocol::DockableKind::Station,
+            kind: sv_protocol::DockableKind::Station,
         };
         state.sync(Some(&docked), [true, true, true]);
         assert_eq!(state.tab, ShopTab::Market);
@@ -877,7 +877,7 @@ mod tests {
         let info = ShipInfo {
             def_id: ship.id.clone(),
             name: ship.name.clone(),
-            kind: evr_protocol::ShipKind::Player,
+            kind: sv_protocol::ShipKind::Player,
             owner: Some(1),
         };
         let account = AccountState {
@@ -886,16 +886,16 @@ mod tests {
             cargo_capacity: ship.cargo,
         };
         let port = &mut pack.systems[0].planets[0];
-        port.shipyard = Some(evr_data::ShipyardDef {
+        port.shipyard = Some(sv_data::ShipyardDef {
             ships: pack.ships.iter().map(|ship| ship.id.clone()).collect(),
         });
-        port.outfitter = Some(evr_data::OutfitterDef {
+        port.outfitter = Some(sv_data::OutfitterDef {
             outfits: vec!["light-blaster".into()],
         });
         let docked = DockedAt {
             system: pack.systems[0].id.clone(),
             location: pack.systems[0].planets[0].id.clone(),
-            kind: evr_protocol::DockableKind::Planet,
+            kind: sv_protocol::DockableKind::Planet,
         };
         (pack, info, account, docked)
     }

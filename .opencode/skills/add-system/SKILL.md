@@ -17,7 +17,7 @@ description: Add a new star system with planets, commodities, and hyperlinks
    (see docs/gdd/economy.md)
 5. NPC presence is wired in `crates/server/src/gameplay.rs`, not in content
    (for now)
-6. Validate: `cargo test -p evr-data`
+6. Validate: `cargo test -p sv-data`
    - Optional `stations: [...]` entries define ID/name/description/radius,
      optional sprite/master/commodities, and `placement` as either
      `Fixed(position: (x, y))` (system-relative offset) or
@@ -28,5 +28,5 @@ description: Add a new star system with planets, commodities, and hyperlinks
    - Fixed ports may lie outside membership discs: use the generic docking
      path, never membership-gated planet-only logic. Keep entire orbital
      sweeps clear of planets and stellar/black-hole danger zones.
-7. Verify: `cargo test -p evr-server` (the embedded slice test exercises the
+7. Verify: `cargo test -p sv-server` (the embedded slice test exercises the
    whole pack end-to-end)

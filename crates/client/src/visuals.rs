@@ -4,8 +4,8 @@ use crate::textures::Textures;
 use bevy::color::Mix;
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_data::ShipSize;
-use evr_protocol::{
+use sv_data::ShipSize;
+use sv_protocol::{
     BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, PlanetTag,
     Position, Projectile, ShipInfo, ShipKind, StarTag,
 };
@@ -57,7 +57,7 @@ impl Plugin for VisualsPlugin {
 mod tests {
     use super::*;
     use bevy::asset::AssetPlugin;
-    use evr_data::{ContentPack, ShipSize};
+    use sv_data::{ContentPack, ShipSize};
 
     #[test]
     fn hull_swap_refreshes_existing_sprite_and_resets_damage_baseline() {

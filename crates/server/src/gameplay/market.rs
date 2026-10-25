@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
-use evr_core::market as math;
-use evr_core::market::Candle;
-use evr_data::{CommodityPrice, ContentPack};
-use evr_protocol::{DockableTag, MarketPrice, Notice, PortMarket};
+use sv_core::market as math;
+use sv_core::market::Candle;
+use sv_data::{CommodityPrice, ContentPack};
+use sv_protocol::{DockableTag, MarketPrice, Notice, PortMarket};
 
 use super::StorageResource;
 use crate::Content;

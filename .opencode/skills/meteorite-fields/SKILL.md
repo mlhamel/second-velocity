@@ -30,7 +30,7 @@ All design decisions below align with
     the playable space.
 - **Ship collisions**:
   - Only undocked ships (`Without<DockedAt>`) collide with meteorites.
-  - Collision damages the ship via `evr_core::combat::apply_damage`, emits
+  - Collision damages the ship via `sv_core::combat::apply_damage`, emits
     `ShipDamaged` (and `ShipDestroyed` if lethal), and applies a rebound
     impulse + short per-meteorite impact cooldown (`0.6s`) to prevent
     multi-tick instant kills.
@@ -163,14 +163,14 @@ All design decisions below align with
 
 1. **Docs & ADR**: `docs/decisions/0010-meteorite-fields-and-fragmentation.md`
    and `.opencode/skills/meteorite-fields/SKILL.md`.
-2. **Core + Data + Protocol**: `MeteoriteSize` math in `evr-core`,
-   `MeteoriteFieldDef` in `evr-data` + `content/systems/*.ron`, replicated
-   `Meteorite` component in `evr-protocol`. Verify: `cargo test -p evr-core -p evr-data -p evr-protocol`.
+2. **Core + Data + Protocol**: `MeteoriteSize` math in `sv-core`,
+   `MeteoriteFieldDef` in `sv-data` + `content/systems/*.ron`, replicated
+   `Meteorite` component in `sv-protocol`. Verify: `cargo test -p sv-core -p sv-data -p sv-protocol`.
 3. **Server simulation**: spawning, drift + self-spin, ship collision damage,
    projectile hits, and recursive binary splitting (`1 -> 2 -> 4 -> 0`) with
-   server unit tests. Verify: `cargo test -p evr-server`.
+   server unit tests. Verify: `cargo test -p sv-server`.
 4. **Client visuals & art**: meteorite sprites, `visuals.rs` spawning/spinning,
-   minimap blips. Verify: `cargo build -p evr-client` + `cargo clippy --workspace -- -D warnings`.
+   minimap blips. Verify: `cargo build -p sv-client` + `cargo clippy --workspace -- -D warnings`.
 5. **MCP & Benchmark scenario**: `observe()` meteorite array + benchmark
    scenario in `content/scenarios/`. Verify: `make bench` and `make check`.
 

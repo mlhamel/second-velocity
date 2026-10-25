@@ -5,7 +5,7 @@
 Real-time top-down 2D, in the spirit of EV.
 
 - Shields absorb first, armor takes the spill. Armor is the hull — armor gone
-  means destroyed (`evr-core` `ShipState`)
+  means destroyed (`sv-core` `ShipState`)
 - Shields regenerate slowly in flight (4.0/s); armor does not repair
 - Escape is a legitimate tactic; hyperjump fuel is a combat resource
 - Death: lose cargo, keep credits. The yard builds you a new hull (3 s)

@@ -1,7 +1,7 @@
 use super::progression::{dock_earth, ready};
 use super::*;
 use crate::gameplay::market;
-use evr_protocol::{DockableTag, PortMarket};
+use sv_protocol::{DockableTag, PortMarket};
 
 fn market_price(h: &Harness, system: &str, port: &str, commodity: &str) -> Option<u32> {
     market::market_price(h.server.world(), system, port, commodity)
@@ -229,7 +229,7 @@ fn market_state_restores_from_storage_with_supply_prices_and_candles() {
         storage: Some(Box::new(db)),
     };
     let content_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../content");
-    let pack = evr_data::ContentPack::load_dir(&content_root).expect("pack loads");
+    let pack = sv_data::ContentPack::load_dir(&content_root).expect("pack loads");
     let state = market::init_market_state(&storage, &pack);
 
     assert_eq!(state.day, 1);

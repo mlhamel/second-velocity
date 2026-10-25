@@ -1,12 +1,12 @@
 use std::f64::consts::PI;
 use std::path::Path;
 
-use evr_data::{ContentPack, ScenarioDef, ScenarioStep};
-use evr_protocol::{PlanetTag, Position};
-use evr_server::Content;
-use evr_server::gameplay::EncounterRng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sv_data::{ContentPack, ScenarioDef, ScenarioStep};
+use sv_protocol::{PlanetTag, Position};
+use sv_server::Content;
+use sv_server::gameplay::EncounterRng;
 
 use crate::harness::{Harness, TickSample};
 
@@ -347,13 +347,13 @@ fn execute_step(
                     let mut query = harness
                         .server
                         .world_mut()
-                        .query::<(&evr_protocol::DockableTag, &Position)>();
+                        .query::<(&sv_protocol::DockableTag, &Position)>();
                     query
                         .iter(harness.server.world())
                         .find(|(tag, _)| {
                             tag.system == *system
                                 && tag.id == *station
-                                && tag.kind == evr_protocol::DockableKind::Station
+                                && tag.kind == sv_protocol::DockableKind::Station
                         })
                         .map(|(tag, pos)| (pos.0, tag.radius))
                         .ok_or_else(|| format!("station {system}/{station} not found"))?
@@ -462,10 +462,10 @@ fn execute_step(
                 let mut q = harness
                     .server
                     .world_mut()
-                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                    .query::<(&sv_protocol::ShipInfo, &mut sv_server::gameplay::Ship)>();
                 let world = harness.server.world_mut();
                 for (info, mut ship) in q.iter_mut(world) {
-                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                    if info.owner == Some(sv_server::EMBEDDED_CLIENT_ID as u64) {
                         ship.0.position = pin;
                         ship.0.velocity = bevy::math::Vec2::ZERO;
                     }
@@ -486,7 +486,7 @@ fn execute_step(
                 let mut query = harness
                     .server
                     .world_mut()
-                    .query::<(&evr_protocol::BlackHoleTag, &Position)>();
+                    .query::<(&sv_protocol::BlackHoleTag, &Position)>();
                 query
                     .iter(harness.server.world())
                     .find(|(hole, _)| hole.system == *system)
@@ -512,12 +512,12 @@ fn execute_step(
             let mut entered = false;
             {
                 let mut query = harness.server.world_mut().query::<(
-                    &evr_protocol::ShipInfo,
-                    &mut evr_server::gameplay::Ship,
-                    Option<&evr_protocol::DockedAt>,
+                    &sv_protocol::ShipInfo,
+                    &mut sv_server::gameplay::Ship,
+                    Option<&sv_protocol::DockedAt>,
                 )>();
                 for (info, mut ship, docked) in query.iter_mut(harness.server.world_mut()) {
-                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                    if info.owner == Some(sv_server::EMBEDDED_CLIENT_ID as u64) {
                         if docked.is_some() {
                             return Err("lift off before approaching a black hole".to_owned());
                         }
@@ -657,7 +657,7 @@ fn execute_step(
             Ok(())
         }
         ScenarioStep::AdvanceEconomyTicks { ticks } => {
-            evr_server::gameplay::market::force_market_ticks(harness.server.world_mut(), *ticks);
+            sv_server::gameplay::market::force_market_ticks(harness.server.world_mut(), *ticks);
             advance_tracking(
                 harness,
                 SETTLE_TICKS,
@@ -669,7 +669,7 @@ fn execute_step(
             Ok(())
         }
         ScenarioStep::AdvanceContractRefreshes { refreshes } => {
-            evr_server::gameplay::contracts::force_contract_refresh(
+            sv_server::gameplay::contracts::force_contract_refresh(
                 harness.server.world_mut(),
                 *refreshes,
             );
@@ -690,7 +690,7 @@ fn execute_step(
             min,
             max,
         } => {
-            let actual = evr_server::gameplay::market::market_price(
+            let actual = sv_server::gameplay::market::market_price(
                 harness.server.world(),
                 system,
                 location,
@@ -773,7 +773,7 @@ fn execute_step(
             let entities: Vec<bevy::prelude::Entity> = harness
                 .server
                 .world_mut()
-                .query_filtered::<(bevy::prelude::Entity, &evr_protocol::SystemMembership), bevy::prelude::With<evr_protocol::Meteorite>>()
+                .query_filtered::<(bevy::prelude::Entity, &sv_protocol::SystemMembership), bevy::prelude::With<sv_protocol::Meteorite>>()
                 .iter(harness.server.world())
                 .filter(|(_, m)| m.0 == sys)
                 .map(|(e, _)| e)
@@ -797,9 +797,9 @@ fn execute_step(
             velocity,
         } => {
             let parsed_size = match size.as_str() {
-                "large" => evr_protocol::MeteoriteSize::Large,
-                "medium" => evr_protocol::MeteoriteSize::Medium,
-                "small" => evr_protocol::MeteoriteSize::Small,
+                "large" => sv_protocol::MeteoriteSize::Large,
+                "medium" => sv_protocol::MeteoriteSize::Medium,
+                "small" => sv_protocol::MeteoriteSize::Small,
                 other => return Err(format!("unknown meteorite size '{other}'")),
             };
             let state = harness.observe();
@@ -815,7 +815,7 @@ fn execute_step(
             let vel = bevy::math::Vec2::new(velocity.0, velocity.1);
             let spin = if vel.length_squared() > 0.0 { 1.4 } else { 0.0 };
             let mut cmds = harness.server.world_mut().commands();
-            evr_server::gameplay::spawn_meteorite(
+            sv_server::gameplay::spawn_meteorite(
                 &mut cmds,
                 &sys,
                 ship_pos,
@@ -851,17 +851,17 @@ fn execute_step(
                 let mut q = harness.server.world_mut().query::<(
                     bevy::prelude::Entity,
                     &Position,
-                    &evr_protocol::SystemMembership,
-                    &evr_protocol::Meteorite,
+                    &sv_protocol::SystemMembership,
+                    &sv_protocol::Meteorite,
                 )>();
                 let world = harness.server.world();
                 q.iter(world)
                     .filter(|(_, _, m, _)| m.0 == sys)
                     .min_by_key(|(_, pos, _, met)| {
                         let tier_rank = match met.size {
-                            evr_protocol::MeteoriteSize::Large => 0_u8,
-                            evr_protocol::MeteoriteSize::Medium => 1_u8,
-                            evr_protocol::MeteoriteSize::Small => 2_u8,
+                            sv_protocol::MeteoriteSize::Large => 0_u8,
+                            sv_protocol::MeteoriteSize::Medium => 1_u8,
+                            sv_protocol::MeteoriteSize::Small => 2_u8,
                         };
                         (tier_rank, pos.0.distance(ship_pos).to_bits())
                     })
@@ -877,11 +877,10 @@ fn execute_step(
             {
                 pos.0 = ship_pos + forward * 85.0;
             }
-            if let Some(mut motion) =
-                harness
-                    .server
-                    .world_mut()
-                    .get_mut::<evr_server::gameplay::MeteoriteMotion>(target_entity)
+            if let Some(mut motion) = harness
+                .server
+                .world_mut()
+                .get_mut::<sv_server::gameplay::MeteoriteMotion>(target_entity)
             {
                 motion.velocity = bevy::math::Vec2::ZERO;
             }
@@ -906,7 +905,7 @@ fn execute_step(
             let projs: Vec<bevy::prelude::Entity> = harness
                 .server
                 .world_mut()
-                .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<evr_protocol::Projectile>>()
+                .query_filtered::<bevy::prelude::Entity, bevy::prelude::With<sv_protocol::Projectile>>()
                 .iter(harness.server.world())
                 .collect();
             for p in projs {
@@ -969,17 +968,17 @@ fn execute_step(
             let (target_entity, target_pos) = {
                 let mut q = harness.server.world_mut().query::<(
                     bevy::prelude::Entity,
-                    &evr_protocol::ShipInfo,
+                    &sv_protocol::ShipInfo,
                     &Position,
-                    &evr_protocol::SystemMembership,
-                    Option<&evr_server::gameplay::Aggro>,
+                    &sv_protocol::SystemMembership,
+                    Option<&sv_server::gameplay::Aggro>,
                 )>();
                 let world = harness.server.world();
                 q.iter(world)
                     .filter(|(_, info, _, _, aggro)| {
                         aggro.is_none()
-                            && info.kind != evr_protocol::ShipKind::Player
-                            && info.kind != evr_protocol::ShipKind::Pirate
+                            && info.kind != sv_protocol::ShipKind::Player
+                            && info.kind != sv_protocol::ShipKind::Pirate
                             && kind
                                 .as_ref()
                                 .is_none_or(|k| info.kind.as_str() == k.as_str())
@@ -1013,10 +1012,10 @@ fn execute_step(
                 let mut q = harness
                     .server
                     .world_mut()
-                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                    .query::<(&sv_protocol::ShipInfo, &mut sv_server::gameplay::Ship)>();
                 let world = harness.server.world_mut();
                 for (info, mut s) in q.iter_mut(world) {
-                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                    if info.owner == Some(sv_server::EMBEDDED_CLIENT_ID as u64) {
                         s.0.position = npc_pos - bevy::math::Vec2::new(60.0, 0.0);
                         s.0.velocity = bevy::math::Vec2::ZERO;
                     }
@@ -1055,15 +1054,15 @@ fn execute_step(
             let (npc_entity, npc_pos) = {
                 let mut q = harness.server.world_mut().query::<(
                     bevy::prelude::Entity,
-                    &evr_protocol::ShipInfo,
+                    &sv_protocol::ShipInfo,
                     &Position,
-                    &evr_protocol::SystemMembership,
+                    &sv_protocol::SystemMembership,
                 )>();
                 let world = harness.server.world();
                 q.iter(world)
                     .filter(|(_, info, _, m)| {
                         m.0 == sys
-                            && info.kind != evr_protocol::ShipKind::Player
+                            && info.kind != sv_protocol::ShipKind::Player
                             && kind
                                 .as_ref()
                                 .is_none_or(|k| info.kind.as_str() == k.as_str())
@@ -1077,10 +1076,10 @@ fn execute_step(
                 let mut q = harness
                     .server
                     .world_mut()
-                    .query::<(&evr_protocol::ShipInfo, &mut evr_server::gameplay::Ship)>();
+                    .query::<(&sv_protocol::ShipInfo, &mut sv_server::gameplay::Ship)>();
                 let world = harness.server.world_mut();
                 for (info, mut s) in q.iter_mut(world) {
-                    if info.owner == Some(evr_server::EMBEDDED_CLIENT_ID as u64) {
+                    if info.owner == Some(sv_server::EMBEDDED_CLIENT_ID as u64) {
                         s.0.position = npc_pos - bevy::math::Vec2::new(75.0, 0.0);
                         s.0.rotation = 0.0;
                         s.0.velocity = bevy::math::Vec2::ZERO;
@@ -1126,7 +1125,7 @@ fn execute_step(
                 let aggroed = harness
                     .server
                     .world()
-                    .get::<evr_server::gameplay::Aggro>(npc_entity)
+                    .get::<sv_server::gameplay::Aggro>(npc_entity)
                     .is_some();
                 if aggroed && *hull_damage_taken > damage_before {
                     retaliated = true;
@@ -1220,7 +1219,7 @@ fn star_world_pos(harness: &mut Harness, system_id: &str) -> Option<([f64; 2], f
     let mut query = harness
         .server
         .world_mut()
-        .query::<(&evr_protocol::StarTag, &Position)>();
+        .query::<(&sv_protocol::StarTag, &Position)>();
     let world = harness.server.world();
     query
         .iter(world)

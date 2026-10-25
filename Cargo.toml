@@ -15,10 +15,10 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
-evr-core = { path = "crates/core" }
-evr-data = { path = "crates/data" }
-evr-protocol = { path = "crates/protocol" }
-evr-server = { path = "crates/server" }
+sv-core = { path = "crates/core" }
+sv-data = { path = "crates/data" }
+sv-protocol = { path = "crates/protocol" }
+sv-server = { path = "crates/server" }
 
 bevy = "0.19"
 bevy_replicon = "0.41"

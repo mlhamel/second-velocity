@@ -64,8 +64,8 @@ jobs:
 
       - name: Run gameplay benchmarks (Markdown + JSON)
         run: |
-          cargo build --release -p evr-mcp
-          ./target/release/evr-mcp --bench --compare prev-bench-report.json --save-json bench-report.json > bench-report.md
+          cargo build --release -p sv-mcp
+          ./target/release/second-velocity-mcp --bench --compare prev-bench-report.json --save-json bench-report.json > bench-report.md
           cat bench-report.md
 
       - name: Publish benchmark summary to GitHub Actions step summary

@@ -1,5 +1,5 @@
 use super::*;
-use evr_protocol::{BuyOutfit, BuyShip, SellOutfit};
+use sv_protocol::{BuyOutfit, BuyShip, SellOutfit};
 
 pub(super) fn player(h: &mut Harness, owner: u64) -> Entity {
     h.server

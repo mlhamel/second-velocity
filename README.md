@@ -10,9 +10,9 @@ server.
 ## Quickstart
 
 ```bash
-cargo run -p evr-server 3456 --storage shard.db     # standalone shard (UDP :3456, persistent)
-cargo run -p evr-client                            # offline single-player (embedded server)
-cargo run -p evr-client -- --connect host:port --username you --password secret
+cargo run -p sv-server 3456 --storage shard.db     # standalone shard (UDP :3456, persistent)
+cargo run -p sv-client                            # offline single-player (embedded server)
+cargo run -p sv-client -- --connect host:port --username you --password secret
 cargo test --workspace                              # unit + end-to-end tests
 ```
 
@@ -26,15 +26,15 @@ cargo test --workspace                              # unit + end-to-end tests
 ![Docked and trading at Newhaven](docs/screenshots/06-docked-trade.png)
 
 Captured through the game's MCP `capture_screenshots` tool. Build both
-executables first with `cargo build -p evr-client -p evr-mcp`, then call
-`capture_screenshots` with no arguments on `evr-game`.
+executables first with `cargo build -p sv-client -p sv-mcp`, then call
+`capture_screenshots` with no arguments on `sv-game`.
 
 The tool opens a separate desktop client, runs the automated tour, and refreshes
 all six images only after the complete tour succeeds. It requires a working
 desktop display, has a 180-second timeout, and does not change the MCP game
 session. Errors return the capture log path.
 
-The tour can also run directly: `cargo run -p evr-client -- --capture-tour`.
+The tour can also run directly: `cargo run -p sv-client -- --capture-tour`.
 Use `--capture-dir path/to/output` to change the output directory. F12 saves a
 screenshot anytime during normal play.
 
@@ -42,7 +42,7 @@ screenshot anytime during normal play.
 
 | Path | What |
 |---|---|
-| `crates/` | evr-core (sim), evr-data (content), evr-protocol (wire), evr-server, evr-client, evr-mcp (MCP server) |
+| `crates/` | sv-core (sim), sv-data (content), sv-protocol (wire), sv-server, sv-client, sv-mcp (MCP server) |
 | `content/` | RON content packs — data, not code |
 | `docs/gdd/` | game design (README is the index) |
 | `docs/decisions/` | ADRs — the why behind everything |
@@ -54,8 +54,8 @@ screenshot anytime during normal play.
 Agents: start at [AGENTS.md](AGENTS.md). Humans: start at
 [docs/gdd/README.md](docs/gdd/README.md).
 
-The game is also playable by agents: `evr-mcp` exposes the sim as an MCP
-server (registered as `evr-game` in opencode.json) — observe, fly, trade,
+The game is also playable by agents: `sv-mcp` exposes the sim as an MCP
+server (registered as `sv-game` in opencode.json) — observe, fly, trade,
 fight, and warp through tool calls. See `crates/mcp`.
 
 ## Milestones

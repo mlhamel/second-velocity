@@ -1,5 +1,5 @@
 (
-    id: "evr-base",
+    id: "sv-base",
     name: "Second Velocity — Base Universe",
     version: (0, 1, 0),
     ships: [
