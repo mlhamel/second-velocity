@@ -1,0 +1,29 @@
+[package]
+name = "sv-log"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "second-velocity-log"
+path = "src/main.rs"
+
+[dependencies]
+bevy = { workspace = true, default-features = false, features = [
+    "std",
+    "multi_threaded",
+    "bevy_state",
+    "serialize",
+] }
+bevy_replicon.workspace = true
+bevy_replicon_renet2.workspace = true
+sv-data.workspace = true
+sv-protocol.workspace = true
+serde.workspace = true
+serde_json = { workspace = true }
+
+[dev-dependencies]
+sv-server.workspace = true
+
+[lints]
+workspace = true

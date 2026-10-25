@@ -5259,6 +5259,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sv-log"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_replicon",
+ "bevy_replicon_renet2",
+ "serde",
+ "serde_json",
+ "sv-data",
+ "sv-protocol",
+ "sv-server",
+]
+
+[[package]]
 name = "sv-mcp"
 version = "0.1.0"
 dependencies = [
