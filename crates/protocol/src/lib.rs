@@ -3,6 +3,8 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+pub const PROTOCOL_ID: u64 = 1;
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Position(pub Vec2);
 

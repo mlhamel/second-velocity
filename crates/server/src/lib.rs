@@ -25,7 +25,7 @@ use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
 use sv_data::{ContentError, ContentPack};
 
 pub const TICK_RATE: f32 = 60.0;
-pub const PROTOCOL_ID: u64 = 1;
+pub use sv_protocol::PROTOCOL_ID;
 pub const EMBEDDED_CLIENT_ID: u16 = 1;
 pub const MAX_CLIENTS: usize = 64;
 
