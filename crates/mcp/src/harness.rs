@@ -318,13 +318,14 @@ impl Harness {
                 Option<&AccountState>,
                 Option<&ChiefEncounter>,
                 Option<&ActiveQuests>,
+                Option<&sv_protocol::PlayerReputation>,
             )>();
             let world = self.server.world();
             state
                 .iter(world)
-                .find(|(info, _, _, _, _, _, _)| info.owner == Some(owner))
+                .find(|(info, _, _, _, _, _, _, _)| info.owner == Some(owner))
                 .map(
-                    |(info, ship, membership, docked, account, encounter, quests)| {
+                    |(info, ship, membership, docked, account, encounter, quests, reputation)| {
                         (
                             info.name.clone(),
                             info.def_id.clone(),
@@ -334,18 +335,47 @@ impl Harness {
                             account.cloned(),
                             encounter.cloned(),
                             quests.cloned(),
+                            reputation.cloned(),
                         )
                     },
                 )
         };
 
-        let Some((ship_name, ship_id, ship, system, docked, account, encounter, quests)) = my_ship
+        let Some((
+            ship_name,
+            ship_id,
+            ship,
+            system,
+            docked,
+            account,
+            encounter,
+            quests,
+            reputation,
+        )) = my_ship
         else {
             return serde_json::json!({
                 "tick": self.ticks,
                 "alive": false,
                 "notices": notices,
             });
+        };
+
+        let control = {
+            let mut entries = self
+                .server
+                .world_mut()
+                .query::<&sv_protocol::SystemControl>();
+            let world = self.server.world();
+            entries
+                .iter(world)
+                .map(|state| {
+                    serde_json::json!({
+                        "system": state.system,
+                        "controller": state.controller,
+                        "meter": state.meter,
+                    })
+                })
+                .collect::<Vec<_>>()
         };
 
         let market = {
@@ -618,6 +648,12 @@ impl Harness {
                 "credits": account.credits,
                 "cargo": account.cargo.iter().cloned().collect::<std::collections::BTreeMap<String, u32>>(),
                 "cargo_capacity": account.cargo_capacity,
+                "reputation": reputation.map(|rep| {
+                    rep.standings
+                        .iter()
+                        .map(|(faction, value)| serde_json::json!({"faction": faction, "value": value}))
+                        .collect::<Vec<_>>()
+                }),
             },
             "planets": planets,
             "stations": stations,
@@ -625,6 +661,7 @@ impl Harness {
             "meteorites": meteorites,
             "black_holes": black_holes,
             "market": market,
+            "control": control,
             "shops": shops,
             "encounter": encounter_json,
             "quests": quests_json,

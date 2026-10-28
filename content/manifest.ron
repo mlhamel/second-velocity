@@ -92,6 +92,7 @@
         "scenarios/outfitter-loadout.ron",
         "scenarios/market-drift.ron",
         "scenarios/contract-refresh.ron",
+        "scenarios/faction-control.ron",
     ],
     factions: [
         "factions/confederation.ron",

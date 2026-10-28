@@ -683,6 +683,103 @@ fn execute_step(
             );
             Ok(())
         }
+        ScenarioStep::AdvanceDispatch => {
+            sv_server::gameplay::factions::force_dispatch(harness.server.world_mut());
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::AssertDispatch { contains } => {
+            let state = harness
+                .server
+                .world()
+                .resource::<sv_server::gameplay::factions::FactionState>();
+            let last = state.last_dispatch.as_deref();
+            if let Some(expected) = contains
+                && !last.is_some_and(|text| text.contains(expected.as_str()))
+            {
+                return Err(format!(
+                    "expected dispatch containing {expected:?}, got {last:?}"
+                ));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertControl {
+            system,
+            controller,
+            min_meter,
+            max_meter,
+        } => {
+            let state = harness
+                .server
+                .world()
+                .resource::<sv_server::gameplay::factions::FactionState>();
+            let actual_controller = state.controller(system).to_owned();
+            if let Some(expected) = controller
+                && actual_controller != *expected
+            {
+                return Err(format!(
+                    "expected {system} controlled by {expected:?}, got {actual_controller:?}"
+                ));
+            }
+            let meter = state.meter(system);
+            if let Some(min) = min_meter
+                && meter < *min
+            {
+                return Err(format!("expected {system} meter >= {min}, got {meter}"));
+            }
+            if let Some(max) = max_meter
+                && meter > *max
+            {
+                return Err(format!("expected {system} meter <= {max}, got {meter}"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertReputation { faction, min, max } => {
+            let mut players = harness.server.world_mut().query_filtered::<
+                &sv_protocol::PlayerReputation,
+                bevy::ecs::query::With<sv_server::gameplay::PlayerShip>,
+            >();
+            let world = harness.server.world();
+            let actual = players
+                .iter(world)
+                .map(|reputation| {
+                    reputation
+                        .standings
+                        .iter()
+                        .find(|(id, _)| id == faction)
+                        .map(|(_, value)| *value)
+                        .unwrap_or(0)
+                })
+                .max();
+            let Some(actual) = actual else {
+                return Err("no player ship carries reputation".to_owned());
+            };
+            if let Some(min) = min
+                && actual < *min
+            {
+                return Err(format!(
+                    "expected {faction} reputation >= {min}, got {actual}"
+                ));
+            }
+            if let Some(max) = max
+                && actual > *max
+            {
+                return Err(format!(
+                    "expected {faction} reputation <= {max}, got {actual}"
+                ));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
         ScenarioStep::AssertPrice {
             system,
             location,

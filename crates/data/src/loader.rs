@@ -534,6 +534,12 @@ impl ContentPack {
                     ScenarioStep::AssertCompletedQuest(quest_id) => {
                         validate_reference("scenario quest", quest_id, &quest_ids)?;
                     }
+                    ScenarioStep::AssertControl { system, .. } => {
+                        validate_reference("scenario control system", system, &system_ids)?;
+                    }
+                    ScenarioStep::AssertReputation { faction, .. } => {
+                        validate_reference("scenario reputation faction", faction, &faction_ids)?;
+                    }
                     _ => {}
                 }
             }

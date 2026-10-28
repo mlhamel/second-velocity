@@ -150,6 +150,27 @@ pub enum ScenarioStep {
     AdvanceContractRefreshes {
         refreshes: u32,
     },
+    AdvanceDispatch,
+    AssertDispatch {
+        #[serde(default)]
+        contains: Option<String>,
+    },
+    AssertControl {
+        system: String,
+        #[serde(default)]
+        controller: Option<String>,
+        #[serde(default)]
+        min_meter: Option<i32>,
+        #[serde(default)]
+        max_meter: Option<i32>,
+    },
+    AssertReputation {
+        faction: String,
+        #[serde(default)]
+        min: Option<i32>,
+        #[serde(default)]
+        max: Option<i32>,
+    },
     AssertPrice {
         system: String,
         location: String,
