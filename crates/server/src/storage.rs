@@ -23,6 +23,8 @@ pub struct PlayerState {
     pub active_quests_json: String,
     #[serde(default)]
     pub equipped_outfits: Option<Vec<String>>,
+    #[serde(default)]
+    pub reputation_json: String,
 }
 
 impl Default for PlayerState {
@@ -38,6 +40,7 @@ impl Default for PlayerState {
             armor: 25.0,
             active_quests_json: default_active_quests_json(),
             equipped_outfits: None,
+            reputation_json: "[]".to_owned(),
         }
     }
 }
@@ -68,6 +71,12 @@ pub struct MarketSnapshot {
     pub elapsed_secs: f32,
     pub supplies: Vec<MarketSupply>,
     pub candles: Vec<MarketCandle>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ControlRow {
+    pub system: String,
+    pub meter: i32,
 }
 
 #[derive(Debug)]
@@ -111,6 +120,8 @@ pub trait Storage: Send + Sync + 'static {
     fn save_player(&self, username: &str, state: &PlayerState) -> Result<(), StorageError>;
     fn load_market(&self) -> Result<MarketSnapshot, StorageError>;
     fn save_market(&self, snapshot: &MarketSnapshot) -> Result<(), StorageError>;
+    fn load_control(&self) -> Result<Vec<ControlRow>, StorageError>;
+    fn save_control(&self, rows: &[ControlRow]) -> Result<(), StorageError>;
     fn close(&self);
 }
 
@@ -153,6 +164,10 @@ impl SqliteStorage {
                 close INTEGER NOT NULL,
                 volume INTEGER NOT NULL,
                 PRIMARY KEY (day, system, port, commodity)
+            );
+            CREATE TABLE IF NOT EXISTS system_control (
+                system TEXT PRIMARY KEY,
+                meter INTEGER NOT NULL
             );",
         )?;
         Self::migrate_columns(&conn)?;
@@ -175,6 +190,12 @@ impl SqliteStorage {
         if !cols.iter().any(|c| c == "equipped_outfits_json") {
             conn.execute(
                 "ALTER TABLE accounts ADD COLUMN equipped_outfits_json TEXT",
+                [],
+            )?;
+        }
+        if !cols.iter().any(|c| c == "reputation_json") {
+            conn.execute(
+                "ALTER TABLE accounts ADD COLUMN reputation_json TEXT NOT NULL DEFAULT '[]'",
                 [],
             )?;
         }
@@ -213,12 +234,15 @@ impl SqliteStorage {
             armor: row.get("armor")?,
             active_quests_json,
             equipped_outfits,
+            reputation_json: row
+                .get("reputation_json")
+                .unwrap_or_else(|_| "[]".to_owned()),
         })
     }
 }
 
 fn state_columns() -> &'static str {
-    "credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json"
+    "credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json, reputation_json"
 }
 
 impl Storage for SqliteStorage {
@@ -230,9 +254,10 @@ impl Storage for SqliteStorage {
 
         let state = PlayerState::default();
         let cargo_json = serde_json::to_string(&state.cargo).unwrap_or_else(|_| "[]".into());
-        self.conn.lock().unwrap().execute(
-            "INSERT INTO accounts (username, password_hash, credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO accounts (username, password_hash, credits, cargo_json, ship_id, system, pos_x, pos_y, fuel, shields, armor, active_quests_json, equipped_outfits_json, reputation_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 username,
                 hash,
@@ -247,6 +272,7 @@ impl Storage for SqliteStorage {
                 state.armor,
                 state.active_quests_json,
                 Option::<String>::None,
+                state.reputation_json,
             ],
         )?;
         Ok(state)
@@ -303,7 +329,7 @@ impl Storage for SqliteStorage {
             .transpose()
             .map_err(|err| rusqlite::Error::ToSqlConversionFailure(Box::new(err)))?;
         let changed = self.conn.lock().unwrap().execute(
-            "UPDATE accounts SET credits=?2, cargo_json=?3, ship_id=?4, system=?5, pos_x=?6, pos_y=?7, fuel=?8, shields=?9, armor=?10, active_quests_json=?11, equipped_outfits_json=?12
+            "UPDATE accounts SET credits=?2, cargo_json=?3, ship_id=?4, system=?5, pos_x=?6, pos_y=?7, fuel=?8, shields=?9, armor=?10, active_quests_json=?11, equipped_outfits_json=?12, reputation_json=?13
              WHERE username=?1",
             params![
                 username,
@@ -318,6 +344,7 @@ impl Storage for SqliteStorage {
                 state.armor,
                 state.active_quests_json,
                 outfits_json,
+                state.reputation_json,
             ],
         )?;
         if changed == 0 {
@@ -370,6 +397,37 @@ impl Storage for SqliteStorage {
         let mut conn = self.conn.lock().unwrap();
         let tx = conn.transaction()?;
         Self::save_market_locked(&tx, snapshot)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn load_control(&self) -> Result<Vec<ControlRow>, StorageError> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT system, meter FROM system_control ORDER BY system")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ControlRow {
+                    system: row.get(0)?,
+                    meter: row.get(1)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows)
+    }
+
+    fn save_control(&self, rows: &[ControlRow]) -> Result<(), StorageError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT INTO system_control (system, meter)
+             VALUES (?1, ?2)
+             ON CONFLICT(system) DO UPDATE SET
+                meter = excluded.meter",
+        )?;
+        for row in rows {
+            stmt.execute(params![row.system, row.meter])?;
+        }
+        drop(stmt);
         tx.commit()?;
         Ok(())
     }
@@ -587,6 +645,7 @@ mod tests {
             armor: 20.0,
             active_quests_json: r#"{"quests":[],"completed":["newhaven-relief"]}"#.to_owned(),
             equipped_outfits: Some(vec!["light-blaster".into()]),
+            reputation_json: r#"[["rebellion",15],["pirate",-30]]"#.to_owned(),
         };
         storage.save_player("carol", &state).expect("save");
 
@@ -600,6 +659,7 @@ mod tests {
         assert_eq!(loaded.system, "alpha-centauri");
         assert_eq!(loaded.position, (200.0, 300.0));
         assert_eq!(loaded.active_quests_json, state.active_quests_json);
+        assert_eq!(loaded.reputation_json, state.reputation_json);
 
         state.credits = 500;
         storage.save_player("carol", &state).expect("save2");

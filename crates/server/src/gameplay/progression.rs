@@ -97,6 +97,7 @@ pub(super) fn spawn_saved_player(
             cargo_capacity: def.cargo,
         },
         parse_active_quests(&saved.active_quests_json),
+        super::factions::parse_reputation(&saved.reputation_json),
         ClientRef(client),
         PlayerName(name),
     ));
@@ -120,6 +121,7 @@ type ShopShips<'w, 's> = Query<
         &'static mut AccountState,
         Option<&'static PlayerName>,
         &'static ActiveQuests,
+        Option<&'static sv_protocol::PlayerReputation>,
     ),
     With<PlayerShip>,
 >;
@@ -214,6 +216,7 @@ fn purchase(
         mut account,
         name,
         quests,
+        reputation,
     )) = ships.iter_mut().find(|(o, ..)| o.0 == owner)
     else {
         notice(commands, client, "Dock at a port before using its shops.");
@@ -308,6 +311,9 @@ fn purchase(
             armor: state.armor,
             active_quests_json: encode_active_quests(quests),
             equipped_outfits: Some(ids.clone()),
+            reputation_json: reputation
+                .map(super::factions::encode_reputation)
+                .unwrap_or_else(|| "[]".to_owned()),
         };
         if let Some(db) = storage.storage.as_ref() {
             let name = name.ok_or("Cannot save this player's purchase.")?;

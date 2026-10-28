@@ -326,6 +326,12 @@ impl crate::Storage for FailingSave {
     fn create_account(&self, _: &str, _: &str) -> Result<crate::PlayerState, crate::StorageError> {
         Err(crate::StorageError::NotFound)
     }
+    fn load_control(&self) -> Result<Vec<crate::ControlRow>, crate::StorageError> {
+        Ok(Vec::new())
+    }
+    fn save_control(&self, _: &[crate::ControlRow]) -> Result<(), crate::StorageError> {
+        Ok(())
+    }
     fn verify_login(
         &self,
         _: &str,

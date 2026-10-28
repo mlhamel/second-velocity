@@ -10,14 +10,15 @@ use sv_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
     DockableKind, DockableTag, DockedAt, EncounterOption, EquippedOutfits, Explosion, Fuel,
     HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice,
-    PlanetTag, PlayerDied, PortMarket, Position, Projectile, QuestTarget, RequestDock, RequestLand,
-    RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring, SetThrottle, SetTurn, SetWarp,
-    ShipInfo, ShipKind, StarTag, SystemMembership,
+    PlanetTag, PlayerDied, PlayerReputation, PortMarket, Position, Projectile, QuestTarget,
+    RequestDock, RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring,
+    SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemControl, SystemMembership,
 };
 
 use crate::Content;
 
 pub mod contracts;
+pub mod factions;
 pub mod market;
 mod progression;
 use progression::*;
@@ -27,7 +28,6 @@ pub const PIRATE_SYSTEM: &str = "alpha-centauri";
 pub const PLAYER_SHIP: &str = "shuttle";
 pub const PIRATE_SHIP: &str = "turncoat";
 pub const POLICE_SHIP: &str = "patrol";
-pub const POLICED_GOVERNMENT: &str = "confederation";
 pub const FINE_CREDITS: u32 = 200;
 pub const STARTING_CREDITS: u32 = 500;
 pub const JUMP_FUEL_COST: f32 = 25.0;
@@ -164,7 +164,7 @@ enum PendingEncounter {
 }
 
 #[derive(Component, Default)]
-struct LastDamagedBy(Option<u64>);
+pub struct LastDamagedBy(pub Option<u64>);
 
 pub fn parse_active_quests(json: &str) -> ActiveQuests {
     if let Ok(parsed) = serde_json::from_str::<ActiveQuests>(json) {
@@ -220,16 +220,16 @@ struct Control {
 }
 
 #[derive(Component)]
-struct Owner(u64);
+pub struct Owner(pub u64);
 
 #[derive(Component)]
-struct Npc;
+pub struct Npc;
 
 #[derive(Component)]
-struct PlayerShip;
+pub struct PlayerShip;
 
 #[derive(Component)]
-struct ClientRef(Entity);
+pub struct ClientRef(pub Entity);
 
 #[derive(Component)]
 struct Wallet(pub Account);
@@ -310,13 +310,16 @@ impl Plugin for GameplayPlugin {
                         sync_docked_ships,
                         market::economy_tick,
                         market::flush_market_news,
+                        factions::flush_faction_news,
                         contracts::contract_refresh,
+                        factions::dispatch_tick,
                     )
                         .chain(),
                     apply_ship_control,
                     black_hole_gravity,
                     meteorite_movement,
                     update_system_membership,
+                    factions::patrol_hostility,
                     npc_ai,
                     fire_weapons,
                     projectile_flight,
@@ -325,12 +328,17 @@ impl Plugin for GameplayPlugin {
                     star_heat,
                     shield_regen,
                     quest_progress,
-                    ship_deaths,
-                    respawn_players,
-                    respawn_pirates,
-                    sync_ship_state,
-                    sync_accounts,
-                    auto_save,
+                    (
+                        factions::faction_kill_effects,
+                        ship_deaths,
+                        respawn_players,
+                        respawn_pirates,
+                        sync_ship_state,
+                        sync_accounts,
+                        factions::sync_system_control,
+                        auto_save,
+                    )
+                        .chain(),
                 )
                     .chain(),
             );
@@ -496,7 +504,20 @@ fn spawn_world(
 ) {
     let pack = &content.0;
     let market_state = market::init_market_state(&storage, pack);
+    let faction_state = factions::init_faction_state(&storage, pack);
     for system in &pack.systems {
+        commands.spawn((
+            Replicated,
+            SystemControl {
+                system: system.id.clone(),
+                controller: faction_state
+                    .controllers
+                    .get(&system.id)
+                    .cloned()
+                    .unwrap_or_else(|| system.government.clone()),
+                meter: faction_state.meters.get(&system.id).copied().unwrap_or(0),
+            },
+        ));
         let sys_center = Vec2::new(system.position.0, system.position.1);
         for (index, planet) in system.planets.iter().enumerate() {
             commands.spawn((
@@ -649,6 +670,7 @@ fn spawn_world(
     );
     spawn_living_galaxy_npcs(&mut commands, pack);
     commands.insert_resource(market_state);
+    commands.insert_resource(faction_state);
 }
 
 fn station_motion(time: Res<Time>, mut stations: Query<(&StationOrbit, &mut Position)>) {
@@ -1061,6 +1083,7 @@ fn spawn_default_player(
             cargo_capacity: capacity,
         },
         ActiveQuests::default(),
+        PlayerReputation::default(),
         ClientRef(client_entity),
         PlayerName("pilot".to_owned()),
     ));
@@ -1508,14 +1531,24 @@ fn projectile_flight(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn projectile_hits(
     mut commands: Commands,
     content: Res<Content>,
+    faction_state: Res<factions::FactionState>,
     projectiles: Query<(Entity, &Position, &Heading, &Projectile, &ProjectileMotion)>,
     aggros: Query<&Aggro>,
     ships: Query<(Entity, &ShipInfo, Option<&ClientRef>), With<Ship>>,
-    mut hittable: Query<(&mut Ship, &mut LastDamagedBy, Option<&mut Wallet>), Without<DockedAt>>,
+    memberships: Query<&SystemMembership, With<Ship>>,
+    mut hittable: Query<
+        (
+            &mut Ship,
+            &mut LastDamagedBy,
+            Option<&mut Wallet>,
+            Option<&mut PlayerReputation>,
+        ),
+        Without<DockedAt>,
+    >,
     mut meteorites: Query<(
         Entity,
         &Position,
@@ -1545,7 +1578,7 @@ fn projectile_hits(
                     continue;
                 }
             }
-            if let Ok((ship, _, _)) = hittable.get(ship_entity)
+            if let Ok((ship, _, _, _)) = hittable.get(ship_entity)
                 && position.0.distance(ship.0.position) <= SHIP_RADIUS
             {
                 ship_hits.push((
@@ -1598,9 +1631,10 @@ fn projectile_hits(
         }
     }
 
+    let mut fined_now: std::collections::HashSet<u64> = std::collections::HashSet::new();
     for (projectile_entity, victim_entity, damage, attacker_owner, shooter_kind) in ship_hits {
         commands.entity(projectile_entity).despawn();
-        let Ok((mut victim_ship, mut last_damaged, _)) = hittable.get_mut(victim_entity) else {
+        let Ok((mut victim_ship, mut last_damaged, _, _)) = hittable.get_mut(victim_entity) else {
             continue;
         };
         victim_ship.0.apply_damage(damage);
@@ -1656,42 +1690,57 @@ fn projectile_hits(
         if !is_pvp {
             continue;
         }
-        let policed = content
-            .0
-            .system(PLAYER_SYSTEM)
-            .is_some_and(|system| system.government == POLICED_GOVERNMENT);
-        if !policed {
-            continue;
-        }
-
         let Some((attacker_entity, _, attacker_client_ref)) = ships
             .iter()
             .find(|(_, info, _)| info.owner == Some(attacker_owner))
         else {
             continue;
         };
-        let police_exists = aggros.iter().any(|aggro| aggro.0 == attacker_owner);
+        let Ok(attacker_membership) = memberships.get(attacker_entity) else {
+            continue;
+        };
+        let attacker_system = attacker_membership.0.clone();
+        let controller = faction_state.controller(&attacker_system).to_owned();
+        if factions::side_sign(&content.0, &controller) == 0 {
+            continue;
+        }
+        let police_exists = aggros.iter().any(|aggro| aggro.0 == attacker_owner)
+            || fined_now.contains(&attacker_owner);
         if police_exists {
             continue;
         }
-        let police = spawn_ship(
+        let attacker_pos = hittable
+            .get(attacker_entity)
+            .map(|(ship, _, _, _)| ship.0.position)
+            .unwrap_or_default();
+        let sys_center = content
+            .0
+            .system(&attacker_system)
+            .map(|system| Vec2::new(system.position.0, system.position.1))
+            .unwrap_or_default();
+        let offset = (attacker_pos - sys_center) + Vec2::new(280.0, -160.0);
+        factions::spawn_patrol(
             &mut commands,
             &content.0,
-            POLICE_SHIP,
-            ShipKind::Police,
-            None,
-            PLAYER_SYSTEM,
-            Vec2::new(250.0, 250.0),
+            &attacker_system,
+            offset,
+            attacker_owner,
         );
-        commands.entity(police).insert((Npc, Aggro(attacker_owner)));
-        if let Ok((_, _, Some(mut wallet))) = hittable.get_mut(attacker_entity) {
+        fined_now.insert(attacker_owner);
+        if let Ok((_, _, Some(mut wallet), Some(mut reputation))) =
+            hittable.get_mut(attacker_entity)
+        {
             let fine = wallet.0.credits.min(FINE_CREDITS);
             wallet.0.credits -= fine;
+            factions::apply_rep(&mut reputation.standings, &controller, factions::REP_FINE);
             if let Some(client_ref) = attacker_client_ref {
                 notice(
                     &mut commands,
                     ClientId::Client(client_ref.0),
-                    format!("Customs drones: {fine} cr fine for unlawful weapons discharge."),
+                    format!(
+                        "Customs drones: {fine} cr fine for unlawful weapons discharge in {}.",
+                        factions::system_name(&content.0, &attacker_system)
+                    ),
                 );
             }
         }
@@ -1699,7 +1748,10 @@ fn projectile_hits(
             notice(
                 &mut commands,
                 ClientId::Client(client_ref.0),
-                "A Confederation patrol locks onto you.",
+                format!(
+                    "A {} patrol locks onto you.",
+                    factions::faction_name(&content.0, &controller)
+                ),
             );
         }
     }
@@ -2036,6 +2088,7 @@ type DyingShips<'w, 's> = Query<
         Option<&'static Wallet>,
         Option<&'static ActiveQuests>,
         &'static EquippedOutfits,
+        Option<&'static PlayerReputation>,
     ),
 >;
 
@@ -2050,7 +2103,9 @@ fn ship_deaths(
     storage: Res<StorageResource>,
     clients: Query<Entity, With<ConnectedClient>>,
 ) {
-    for (entity, ship, info, membership, owner, client_ref, wallet, quests, equipped) in &ships {
+    for (entity, ship, info, membership, owner, client_ref, wallet, quests, equipped, reputation) in
+        &ships
+    {
         if !ship.0.is_destroyed() {
             continue;
         }
@@ -2112,6 +2167,9 @@ fn ship_deaths(
                     completed,
                 }),
                 equipped_outfits: Some(ids),
+                reputation_json: reputation
+                    .map(factions::encode_reputation)
+                    .unwrap_or_else(|| "[]".to_owned()),
             };
             let name = names
                 .get(entity)
@@ -2288,6 +2346,7 @@ type AutoSavePlayers<'w, 's> = Query<
         &'static ShipInfo,
         &'static EquippedOutfits,
         Option<&'static ActiveQuests>,
+        Option<&'static PlayerReputation>,
     ),
     With<PlayerShip>,
 >;
@@ -2306,7 +2365,7 @@ fn auto_save(
     let Some(db) = storage.storage.as_ref() else {
         return;
     };
-    for (name, wallet, ship, membership, info, equipped, quests) in &players {
+    for (name, wallet, ship, membership, info, equipped, quests, reputation) in &players {
         let state = crate::PlayerState {
             credits: wallet.0.credits,
             cargo: wallet.0.cargo.clone(),
@@ -2318,6 +2377,9 @@ fn auto_save(
             armor: ship.0.armor,
             active_quests_json: quests.map_or_else(|| "[]".into(), encode_active_quests),
             equipped_outfits: Some(equipped.ids.clone()),
+            reputation_json: reputation
+                .map(factions::encode_reputation)
+                .unwrap_or_else(|| "[]".to_owned()),
         };
         if let Err(error) = db.save_player(&name.0, &state) {
             warn!("autosave failed: {error}");
@@ -2941,6 +3003,7 @@ type EncounterShips<'w, 's> = Query<
         &'static mut Ship,
         &'static mut Wallet,
         &'static mut ActiveQuests,
+        &'static mut PlayerReputation,
     ),
 >;
 
@@ -2950,6 +3013,7 @@ fn on_respond_to_encounter(
     clients: Query<&NetworkId>,
     content: Res<Content>,
     board: Res<contracts::ContractBoard>,
+    mut faction_state: ResMut<factions::FactionState>,
     mut ships: EncounterShips,
 ) {
     let owner = raw_id(trigger.client_id, &clients);
@@ -2964,9 +3028,10 @@ fn on_respond_to_encounter(
         mut ship,
         mut wallet,
         mut active_quests,
+        mut reputation,
     )) = ships
         .iter_mut()
-        .find(|(_, ship_owner, _, _, _, _, _, _, _)| ship_owner.0 == owner)
+        .find(|(_, ship_owner, _, _, _, _, _, _, _, _)| ship_owner.0 == owner)
     else {
         return;
     };
@@ -3075,6 +3140,18 @@ fn on_respond_to_encounter(
                     return;
                 }
                 wallet.0.credits -= amount;
+                if let Some(docked) = docked.as_ref() {
+                    let faction = content
+                        .0
+                        .system(&docked.system)
+                        .map(|system| system.government.clone())
+                        .unwrap_or_default();
+                    factions::apply_rep(
+                        &mut reputation.standings,
+                        &faction,
+                        factions::REP_TRIBUTE_PAID,
+                    );
+                }
                 notice(
                     &mut commands,
                     trigger.client_id,
@@ -3205,6 +3282,21 @@ fn on_respond_to_encounter(
                     active_quests.completed.push(quest.id.clone());
                 }
                 wallet.0.credits += quest.reward_credits;
+                let giver_faction = content
+                    .0
+                    .system(&quest.giver_system)
+                    .map(|system| system.government.clone())
+                    .unwrap_or_default();
+                factions::apply_rep(
+                    &mut reputation.standings,
+                    &giver_faction,
+                    factions::REP_QUEST_COMPLETE,
+                );
+                let control_delta = factions::CONTROL_QUEST_COMPLETE
+                    * factions::side_sign(&content.0, &giver_faction);
+                if control_delta != 0 {
+                    faction_state.shift_meter(&content.0, &quest.giver_system, control_delta);
+                }
                 notice(
                     &mut commands,
                     trigger.client_id,
@@ -3438,6 +3530,7 @@ mod tests {
     };
 
     mod contracts;
+    mod factions;
     mod market;
     mod progression;
     mod stations;
