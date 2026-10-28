@@ -1,4 +1,5 @@
 mod chief;
+mod galaxymap;
 mod hud;
 mod input;
 mod minimap;
@@ -110,6 +111,7 @@ fn main() {
         shops::ShopsPlugin,
         screenshots::ScreenshotPlugin,
         minimap::MinimapPlugin,
+        galaxymap::GalaxyMapPlugin,
         sky::SkyPlugin,
     ));
     app.add_systems(
