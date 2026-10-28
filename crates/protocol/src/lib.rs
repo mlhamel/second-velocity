@@ -152,6 +152,18 @@ pub struct PortMarket {
     pub prices: Vec<MarketPrice>,
 }
 
+#[derive(Component, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayerReputation {
+    pub standings: Vec<(String, i32)>,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SystemControl {
+    pub system: String,
+    pub controller: String,
+    pub meter: i32,
+}
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AccountState {
     pub credits: u32,
@@ -370,6 +382,8 @@ pub fn register(app: &mut App) {
         .replicate::<ActiveQuests>()
         .replicate::<Meteorite>()
         .replicate::<PortMarket>()
+        .replicate::<PlayerReputation>()
+        .replicate::<SystemControl>()
         .add_client_event::<SetThrottle>(Channel::Ordered)
         .add_client_event::<SetTurn>(Channel::Ordered)
         .add_client_event::<SetFiring>(Channel::Ordered)
@@ -430,6 +444,14 @@ mod tests {
                     price: 90,
                 },
             ],
+        });
+        roundtrip(PlayerReputation {
+            standings: vec![("confederation".into(), -40), ("rebellion".into(), 25)],
+        });
+        roundtrip(SystemControl {
+            system: "vega".into(),
+            controller: "rebellion".into(),
+            meter: -62,
         });
         roundtrip(Position(Vec2::new(12.5, -3.25)));
         roundtrip(Heading(1.25));
