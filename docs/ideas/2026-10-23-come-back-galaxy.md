@@ -86,16 +86,16 @@ quests, SQLite persistence, govt-zone PvP) but every loop dead-ends today:
 - [x] Scenario: `contract-refresh.ron`; unit tests for generation determinism
       (seeded EncounterRng); full battery + @review
 
-## Phase 4 — Factions and the scoreboard
+## Phase 4 — Factions and the scoreboard (done)
 
-- [ ] `content/factions/` content pack (Confederation, Rebellion, independents,
-      pirates — factions.md is the design source)
-- [ ] Per-player reputation: missions, kills, tribute move it; sticky
+- [x] `content/factions/` content pack (Confederation, Rebellion, independents,
+      pirates — factions.md is the design source); Vega flips to the Rebellion
+- [x] Per-player reputation: missions, kills, tribute move it; sticky
       (player-identity.md: no renames — reputation is identity)
-- [ ] Collective system control shifted by player action; control changes
+- [x] Collective system control shifted by player action; control changes
       policing and PvP rules locally (pvp-policy.md)
-- [ ] Galaxy map as scoreboard; weekly dispatch (news post from server data)
-- [ ] Scenario + unit tests; full battery + @review
+- [x] Galaxy map as scoreboard; weekly dispatch (news post from server data)
+- [x] Scenario + unit tests; full battery + @review
 
 ## Phase 5 — Social + playtest launch
 
