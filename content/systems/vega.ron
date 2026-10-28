@@ -1,8 +1,8 @@
 (
     id: "vega",
     name: "Vega",
-    government: "independent",
-    description: "A trade crossroads where the cargo is honest and the paperwork isn't.",
+    government: "rebellion",
+    description: "A trade crossroads that stopped pretending neutrality. The Confederation still calls it a customs zone; the gunboats in the shadows disagree.",
     position: (-1800.0, 800.0),
     links: ["sol", "sirius", "wolf-359", "polaris"],
     planets: [

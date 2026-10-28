@@ -1,0 +1,7 @@
+(
+    id: "independent",
+    name: "Independent Worlds",
+    description: "Ports that take anyone's credits and answer to no flag. Local militias keep the peace where merchants outnumber warships, which is most places worth docking at.",
+    color: (0.85, 0.85, 0.75),
+    side: Neutral,
+)

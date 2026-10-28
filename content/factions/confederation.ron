@@ -1,0 +1,7 @@
+(
+    id: "confederation",
+    name: "Confederation",
+    description: "The sprawling bureaucracy grown from Sol's core worlds. It taxes every ton of sky it can reach, files piracy under schedule irregularities, and insists the war is a rounding error.",
+    color: (0.25, 0.55, 1.0),
+    side: Confederation,
+)

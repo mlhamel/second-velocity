@@ -1,0 +1,7 @@
+(
+    id: "rebellion",
+    name: "Rebellion",
+    description: "The Confederation's unfinished business, headquartered out of Vega Station. They fly salvage-hull gunboats, pay in scrip and gratitude, and remember who helped them before it was fashionable.",
+    color: (1.0, 0.35, 0.2),
+    side: Rebellion,
+)

@@ -93,4 +93,10 @@
         "scenarios/market-drift.ron",
         "scenarios/contract-refresh.ron",
     ],
+    factions: [
+        "factions/confederation.ron",
+        "factions/rebellion.ron",
+        "factions/independent.ron",
+        "factions/pirate.ron",
+    ],
 )

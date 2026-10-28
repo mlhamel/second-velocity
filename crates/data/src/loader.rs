@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 
 use crate::commodity::CommodityDef;
 use crate::error::{ContentError, validate_asset, validate_ids, validate_reference};
+use crate::faction::FactionDef;
 use crate::manifest::Manifest;
 use crate::outfit::OutfitDef;
 use crate::quest::{QuestDef, QuestKind};
@@ -21,6 +22,7 @@ pub struct ContentPack {
     pub commodities: Vec<CommodityDef>,
     pub quests: Vec<QuestDef>,
     pub scenarios: Vec<ScenarioDef>,
+    pub factions: Vec<FactionDef>,
 }
 
 impl ContentPack {
@@ -57,6 +59,11 @@ impl ContentPack {
             scenarios.push(parse_ron(&root.join(path))?);
         }
 
+        let mut factions: Vec<FactionDef> = Vec::with_capacity(manifest.factions.len());
+        for path in &manifest.factions {
+            factions.push(parse_ron(&root.join(path))?);
+        }
+
         Self::validate(
             &ships,
             &systems,
@@ -64,6 +71,7 @@ impl ContentPack {
             &commodities,
             &quests,
             &scenarios,
+            &factions,
         )?;
         Self::validate_assets(root, &ships, &systems, &outfits, &commodities)?;
 
@@ -75,6 +83,7 @@ impl ContentPack {
             commodities,
             quests,
             scenarios,
+            factions,
         })
     }
 
@@ -166,6 +175,10 @@ impl ContentPack {
         self.scenarios.iter().find(|scenario| scenario.id == id)
     }
 
+    pub fn faction(&self, id: &str) -> Option<&FactionDef> {
+        self.factions.iter().find(|faction| faction.id == id)
+    }
+
     fn validate(
         ships: &[ShipDef],
         systems: &[SystemDef],
@@ -173,6 +186,7 @@ impl ContentPack {
         commodities: &[CommodityDef],
         quests: &[QuestDef],
         scenarios: &[ScenarioDef],
+        factions: &[FactionDef],
     ) -> Result<(), ContentError> {
         validate_ids("ship", ships.iter().map(|ship| ship.id.clone()))?;
         validate_ids("system", systems.iter().map(|system| system.id.clone()))?;
@@ -186,6 +200,26 @@ impl ContentPack {
             "scenario",
             scenarios.iter().map(|scenario| scenario.id.clone()),
         )?;
+        validate_ids("faction", factions.iter().map(|faction| faction.id.clone()))?;
+
+        let faction_ids: std::collections::HashSet<_> =
+            factions.iter().map(|f| f.id.clone()).collect();
+        for faction in factions {
+            let in_range = [faction.color.0, faction.color.1, faction.color.2]
+                .into_iter()
+                .all(|axis| axis.is_finite() && (0.0..=1.0).contains(&axis));
+            if !in_range {
+                return Err(ContentError::UnknownReference {
+                    kind: "faction color",
+                    id: faction.id.clone(),
+                });
+            }
+        }
+        if !factions.is_empty() {
+            for system in systems {
+                validate_reference("system government", &system.government, &faction_ids)?;
+            }
+        }
 
         let outfit_ids: std::collections::HashSet<_> =
             outfits.iter().map(|o| o.id.clone()).collect();

@@ -17,6 +17,23 @@ fn base_pack_loads() {
     assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
     assert_eq!(pack.scenarios.len(), 14);
+    assert_eq!(pack.factions.len(), 4);
+
+    let confederation = pack
+        .faction("confederation")
+        .expect("confederation faction exists");
+    assert_eq!(confederation.side, sv_data::FactionSide::Confederation);
+    let rebellion = pack.faction("rebellion").expect("rebellion faction exists");
+    assert_eq!(rebellion.side, sv_data::FactionSide::Rebellion);
+    let independent = pack
+        .faction("independent")
+        .expect("independent faction exists");
+    assert_eq!(independent.side, sv_data::FactionSide::Neutral);
+    let pirate = pack.faction("pirate").expect("pirate faction exists");
+    assert_eq!(pirate.side, sv_data::FactionSide::Neutral);
+
+    let vega = pack.system("vega").expect("vega exists");
+    assert_eq!(vega.government, "rebellion");
 
     let food = pack.commodity("food").expect("food commodity exists");
     assert_eq!(food.name, "Foodstuffs");

@@ -1,5 +1,6 @@
 mod commodity;
 mod error;
+mod faction;
 mod loader;
 mod loadout;
 mod manifest;
@@ -11,6 +12,7 @@ mod system;
 
 pub use commodity::CommodityDef;
 pub use error::ContentError;
+pub use faction::{FactionDef, FactionSide};
 pub use loader::ContentPack;
 pub use loadout::LoadoutStats;
 pub use manifest::Manifest;

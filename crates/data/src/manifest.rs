@@ -14,4 +14,6 @@ pub struct Manifest {
     pub quests: Vec<String>,
     #[serde(default)]
     pub scenarios: Vec<String>,
+    #[serde(default)]
+    pub factions: Vec<String>,
 }

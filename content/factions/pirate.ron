@@ -1,0 +1,7 @@
+(
+    id: "pirate",
+    name: "Pirates",
+    description: "The ungoverned ledger of the outer lanes. No homeworld, no treaty, no refunds. What they can't buy at Ross 154 they take at the jump.",
+    color: (0.8, 0.15, 0.4),
+    side: Neutral,
+)
