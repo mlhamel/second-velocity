@@ -275,6 +275,79 @@ fn execute_step(
             );
             Ok(())
         }
+        ScenarioStep::SetAfterburner(on) => {
+            harness.set_afterburner(*on);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::SetBrake(on) => {
+            harness.set_brake(*on);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::SetSecondaryFiring(on) => {
+            harness.set_secondary_firing(*on);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::CycleTarget { hostile_only } => {
+            harness.cycle_target(*hostile_only);
+            advance_tracking(
+                harness,
+                SETTLE_TICKS,
+                prev_fuel,
+                prev_hull,
+                fuel_consumed,
+                hull_damage_taken,
+            );
+            Ok(())
+        }
+        ScenarioStep::AssertEnergy { min, max } => {
+            let state = harness.observe();
+            let actual = state["ship"]["energy"].as_f64().unwrap_or(0.0) as f32;
+            if let Some(min_val) = min
+                && actual < *min_val
+            {
+                return Err(format!("expected energy >= {min_val}, got {actual:.1}"));
+            }
+            if let Some(max_val) = max
+                && actual > *max_val
+            {
+                return Err(format!("expected energy <= {max_val}, got {actual:.1}"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
+        ScenarioStep::AssertTargetLocked(expected) => {
+            let state = harness.observe();
+            let actual = state["ship"]["target_locked"].as_bool().unwrap_or(false);
+            if actual != *expected {
+                return Err(format!("expected target_locked={expected}, got {actual}"));
+            }
+            *assertions_passed += 1;
+            Ok(())
+        }
         ScenarioStep::Advance { ticks } => {
             advance_tracking(
                 harness,
@@ -296,7 +369,7 @@ fn execute_step(
             fly_to_point(
                 harness,
                 target,
-                240.0,
+                200.0,
                 remaining_budget,
                 prev_fuel,
                 prev_hull,
@@ -1353,14 +1426,6 @@ fn fly_to_point(
         if distance <= stop_distance {
             harness.set_flight(0.0, 0.0, false);
             harness.set_warp(false);
-            advance_tracking(
-                harness,
-                5,
-                prev_fuel,
-                prev_hull,
-                fuel_consumed,
-                hull_damage_taken,
-            );
             return Ok(());
         }
         let heading = state["ship"]["heading"].as_f64().unwrap_or(0.0);

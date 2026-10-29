@@ -254,6 +254,30 @@ impl Harness {
         self.client.world_mut().client_trigger(SetWarp(on));
     }
 
+    pub fn set_afterburner(&mut self, on: bool) {
+        self.client
+            .world_mut()
+            .client_trigger(sv_protocol::SetAfterburner(on));
+    }
+
+    pub fn set_brake(&mut self, on: bool) {
+        self.client
+            .world_mut()
+            .client_trigger(sv_protocol::SetBrake(on));
+    }
+
+    pub fn set_secondary_firing(&mut self, on: bool) {
+        self.client
+            .world_mut()
+            .client_trigger(sv_protocol::SetSecondaryFiring(on));
+    }
+
+    pub fn cycle_target(&mut self, hostile_only: bool) {
+        self.client
+            .world_mut()
+            .client_trigger(sv_protocol::CycleTarget { hostile_only });
+    }
+
     pub fn buy_ship(&mut self, ship: &str) {
         self.client
             .world_mut()
@@ -319,13 +343,24 @@ impl Harness {
                 Option<&ChiefEncounter>,
                 Option<&ActiveQuests>,
                 Option<&sv_protocol::PlayerReputation>,
+                Option<&sv_protocol::TargetLock>,
             )>();
             let world = self.server.world();
             state
                 .iter(world)
-                .find(|(info, _, _, _, _, _, _, _)| info.owner == Some(owner))
+                .find(|(info, _, _, _, _, _, _, _, _)| info.owner == Some(owner))
                 .map(
-                    |(info, ship, membership, docked, account, encounter, quests, reputation)| {
+                    |(
+                        info,
+                        ship,
+                        membership,
+                        docked,
+                        account,
+                        encounter,
+                        quests,
+                        reputation,
+                        target_lock,
+                    )| {
                         (
                             info.name.clone(),
                             info.def_id.clone(),
@@ -336,6 +371,7 @@ impl Harness {
                             encounter.cloned(),
                             quests.cloned(),
                             reputation.cloned(),
+                            target_lock.cloned(),
                         )
                     },
                 )
@@ -351,6 +387,7 @@ impl Harness {
             encounter,
             quests,
             reputation,
+            target_lock,
         )) = my_ship
         else {
             return serde_json::json!({
@@ -566,6 +603,7 @@ impl Harness {
                         sv_data::OutfitKind::ShieldGenerator { max_shields } => serde_json::json!({"kind":"shield","max_shields":max_shields}),
                         sv_data::OutfitKind::FuelTank { fuel } => serde_json::json!({"kind":"fuel","fuel":fuel}),
                         sv_data::OutfitKind::ArmorPlate { armor } => serde_json::json!({"kind":"armor","armor":armor}),
+                        sv_data::OutfitKind::Reactor { max_energy, energy_regen } => serde_json::json!({"kind":"reactor","max_energy":max_energy,"energy_regen":energy_regen}),
                     };
                     serde_json::json!({"id":o.id,"name":o.name,"price":o.price,"effect":effect,
                         "installed":equipped.iter().filter(|id| **id == o.id).count()})
@@ -645,6 +683,9 @@ impl Harness {
                 "shields": ship.shields,
                 "armor": ship.armor,
                 "fuel": ship.fuel,
+                "energy": ship.energy,
+                "max_energy": ship.max_energy,
+                "target_locked": target_lock.as_ref().and_then(|l| l.0).is_some(),
                 "credits": account.credits,
                 "cargo": account.cargo.iter().cloned().collect::<std::collections::BTreeMap<String, u32>>(),
                 "cargo_capacity": account.cargo_capacity,
