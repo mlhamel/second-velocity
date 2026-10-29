@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: implemented
 ---
 
 # Ghost pilots: local-model player-like ships (evr-pilot sidecar daemon)
@@ -63,26 +63,26 @@ shipyards/loadouts.)
 
 ## Build checklist (one session, full battery + @review)
 
-- [ ] `crates/pilot` skeleton + CLI (`--connect host:port --persona
+- [x] `crates/pilot` skeleton + CLI (`--connect host:port --persona
       content/pilots/<id>.ron [--mock]`); `PilotDef` RON schema; 3 starter
       personas (cautious trader, courier, bounty hunter) in `content/pilots/`
-- [ ] Headless client (MinimalPlugins + Replicon): connect → login →
+- [x] Headless client (MinimalPlugins + Replicon): connect → login →
       reflex loop; reconnect on netcode 15s idle-drop (`ensure_connected`
       pattern from `crates/mcp/src/harness.rs`)
-- [ ] Digest renderer (~400 tokens, format above)
-- [ ] `PilotAction` schema + validation; decision thread (ureq — first
+- [x] Digest renderer (~400 tokens, format above)
+- [x] `PilotAction` schema + validation; decision thread (ureq — first
       HTTP client dep in the workspace) with ollama `format:"json"`;
       mock brain (scripted deterministic responses) for CI
-- [ ] Reflex executor: steering (`tour.rs` `steer()` pattern), docking,
+- [x] Reflex executor: steering (`tour.rs` `steer()` pattern), docking,
       hazard routing, flee, refuel
-- [ ] Decision points: docked, encounter offered, hostile < 600u, quest
+- [x] Decision points: docked, encounter offered, hostile < 600u, quest
       complete, fuel < 25%, idle heartbeat 30–60s, death
-- [ ] Integration test: stub-brain pilot vs embedded memory server —
+- [x] Integration test: stub-brain pilot vs embedded memory server —
       connect → login → fly to Earth → dock → trade → accept quest →
       deliver → turn in
-- [ ] ADR-0015 (sidecar LLM pilots; why not NpcBrain::Pilot); crate README
+- [x] ADR-0018 (sidecar LLM pilots; why not NpcBrain::Pilot); crate README
       runbook (shard + ollama same box, systemd example)
-- [ ] Full validation battery + @review
+- [x] Full validation battery + @review
 
 ## Out of MVP (explicitly)
 
