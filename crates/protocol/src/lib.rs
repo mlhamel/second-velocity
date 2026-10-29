@@ -46,6 +46,21 @@ pub struct Fuel {
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Energy {
+    pub current: f32,
+    pub max: f32,
+}
+
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Velocity(pub Vec2);
+
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetId(pub u64);
+
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetLock(pub Option<u64>);
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ShipInfo {
     pub def_id: String,
     pub kind: ShipKind,
@@ -76,11 +91,21 @@ impl ShipKind {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ProjectileKind {
+    #[default]
+    Bolt,
+    TurretBolt,
+    Missile,
+}
+
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Projectile {
     pub damage: f32,
     pub ttl: f32,
     pub owner: u64,
+    #[serde(default)]
+    pub kind: ProjectileKind,
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -298,6 +323,20 @@ pub struct SetTurn(pub f32);
 pub struct SetFiring(pub bool);
 
 #[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetSecondaryFiring(pub bool);
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetAfterburner(pub bool);
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetBrake(pub bool);
+
+#[derive(Event, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CycleTarget {
+    pub hostile_only: bool,
+}
+
+#[derive(Event, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RequestLand {
     pub planet: String,
 }
@@ -368,6 +407,10 @@ pub fn register(app: &mut App) {
         .replicate::<Heading>()
         .replicate::<Hull>()
         .replicate::<Fuel>()
+        .replicate::<Energy>()
+        .replicate::<Velocity>()
+        .replicate::<TargetId>()
+        .replicate::<TargetLock>()
         .replicate::<ShipInfo>()
         .replicate::<Projectile>()
         .replicate::<PlanetTag>()
@@ -387,6 +430,10 @@ pub fn register(app: &mut App) {
         .add_client_event::<SetThrottle>(Channel::Ordered)
         .add_client_event::<SetTurn>(Channel::Ordered)
         .add_client_event::<SetFiring>(Channel::Ordered)
+        .add_client_event::<SetSecondaryFiring>(Channel::Ordered)
+        .add_client_event::<SetAfterburner>(Channel::Ordered)
+        .add_client_event::<SetBrake>(Channel::Ordered)
+        .add_client_event::<CycleTarget>(Channel::Ordered)
         .add_client_event::<RequestLand>(Channel::Ordered)
         .add_client_event::<RequestDock>(Channel::Ordered)
         .add_client_event::<RequestLiftOff>(Channel::Ordered)
@@ -460,6 +507,19 @@ mod tests {
             max_shields: 40.0,
             armor: 25.0,
             max_armor: 25.0,
+        });
+        roundtrip(Energy {
+            current: 55.0,
+            max: 100.0,
+        });
+        roundtrip(Velocity(Vec2::new(120.0, -45.0)));
+        roundtrip(TargetId(42));
+        roundtrip(TargetLock(Some(42)));
+        roundtrip(Projectile {
+            damage: 22.0,
+            ttl: 2.8,
+            owner: 1,
+            kind: ProjectileKind::Missile,
         });
         roundtrip(ShipInfo {
             def_id: "shuttle".into(),
@@ -548,6 +608,10 @@ mod tests {
         roundtrip(SetThrottle(0.8));
         roundtrip(SetTurn(-1.0));
         roundtrip(SetFiring(true));
+        roundtrip(SetSecondaryFiring(true));
+        roundtrip(SetAfterburner(true));
+        roundtrip(SetBrake(true));
+        roundtrip(CycleTarget { hostile_only: true });
         roundtrip(RequestLand {
             planet: "earth".into(),
         });
