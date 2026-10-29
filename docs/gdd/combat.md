@@ -57,7 +57,8 @@ Black holes are live in Cygnus X-1, south of the mining belt (ADR-0012).
 
 Open questions:
 
-- The EV energy juggle (one pool for weapons, shields, afterburner) — arrives
-  with the outfit system
-- More weapon classes: beams, turrets, missiles
+- Energy capacitor, retrograde brake, built-in afterburner, target lock (which
+  aims weapon fire at the locked ship using velocity lead), auto-turrets, and
+  homing missiles are live (ADR-0019)
+- More weapon classes: continuous beams, ion disruptors
 - Ramming damage: yes/no?
