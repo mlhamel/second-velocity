@@ -8,6 +8,7 @@ members = [
     "crates/client",
     "crates/mcp",
     "crates/log",
+    "crates/pilot",
 ]
 
 [workspace.package]
@@ -20,6 +21,7 @@ sv-core = { path = "crates/core" }
 sv-data = { path = "crates/data" }
 sv-protocol = { path = "crates/protocol" }
 sv-server = { path = "crates/server" }
+sv-pilot = { path = "crates/pilot" }
 
 bevy = "0.19"
 bevy_replicon = "0.41"
@@ -36,6 +38,7 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 argon2 = "0.5"
 schemars = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+ureq = { version = "3", features = ["json"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
