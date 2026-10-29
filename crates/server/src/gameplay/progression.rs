@@ -40,7 +40,8 @@ pub(super) fn restore_ship(
     {
         return Err("Saved ship state is invalid.".into());
     }
-    let mut state = ShipState::new(stats.max_shields, stats.max_armor, stats.max_fuel);
+    let mut state = ShipState::new(stats.max_shields, stats.max_armor, stats.max_fuel)
+        .with_energy(stats.max_energy, stats.energy_regen);
     state.position = Vec2::from(saved.position);
     // Legacy death snapshots stored zero armor; commission their recovered hull.
     if saved.armor > 0.0 {
@@ -84,6 +85,10 @@ pub(super) fn spawn_saved_player(
             current: state.fuel,
             max: state.max_fuel,
         },
+        Energy {
+            current: state.energy,
+            max: state.max_energy,
+        },
         Ship(state),
         weapon_banks(pack, &ids),
         EquippedOutfits { ids },
@@ -117,6 +122,7 @@ type ShopShips<'w, 's> = Query<
         &'static mut WeaponBanks,
         &'static mut Hull,
         &'static mut Fuel,
+        &'static mut Energy,
         &'static mut Wallet,
         &'static mut AccountState,
         Option<&'static PlayerName>,
@@ -212,6 +218,7 @@ fn purchase(
         mut banks,
         mut hull,
         mut fuel,
+        mut energy,
         mut wallet,
         mut account,
         name,
@@ -291,14 +298,18 @@ fn purchase(
         state.max_shields = stats.max_shields;
         state.max_armor = stats.max_armor;
         state.max_fuel = stats.max_fuel;
+        state.max_energy = stats.max_energy;
+        state.energy_regen = stats.energy_regen;
         if replacement {
             state.shields = stats.max_shields;
             state.armor = stats.max_armor;
             state.fuel = stats.max_fuel;
+            state.energy = stats.max_energy;
         } else {
             state.shields = state.shields.min(stats.max_shields);
             state.armor = state.armor.min(stats.max_armor);
             state.fuel = state.fuel.min(stats.max_fuel);
+            state.energy = state.energy.min(stats.max_energy);
         }
         let saved = crate::PlayerState {
             credits,
@@ -348,6 +359,10 @@ fn purchase(
             *fuel = Fuel {
                 current: state.fuel,
                 max: state.max_fuel,
+            };
+            *energy = Energy {
+                current: state.energy,
+                max: state.max_energy,
             };
             *banks = weapon_banks(pack, &ids);
             equipped.ids = ids;

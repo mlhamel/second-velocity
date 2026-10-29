@@ -677,3 +677,154 @@ fn death_with_retired_hull_recovers_in_a_factory_shuttle() {
         PLAYER_SHIP
     );
 }
+
+#[test]
+fn capacitor_afterburner_brake_target_lock_turret_and_missile_work_together() {
+    let (mut h, entity) = ready();
+    dock_earth(&mut h);
+    set_scenario_credits(h.server.world_mut(), 1, 25_000);
+    h.send(SellOutfit {
+        outfit: "light-blaster".into(),
+    });
+    settle(&mut h);
+    h.send(BuyOutfit {
+        outfit: "quad-turret".into(),
+    });
+    h.send(BuyOutfit {
+        outfit: "seeker-rack".into(),
+    });
+    h.send(BuyOutfit {
+        outfit: "capacitor-bank".into(),
+    });
+    settle(&mut h);
+    assert_eq!(
+        h.server.world().get::<Energy>(entity).unwrap().max,
+        100.0,
+        "capacitor bank adds +40 energy to the shuttle's 60 base"
+    );
+
+    h.send(RequestLiftOff);
+    settle(&mut h);
+
+    // Afterburner drains capacitor energy and accelerates the ship
+    h.send(SetAfterburner(true));
+    for _ in 0..20 {
+        h.step();
+    }
+    let after_burn = h.server.world().get::<Ship>(entity).unwrap().0.clone();
+    assert!(
+        after_burn.energy < 100.0,
+        "afterburner must drain capacitor energy"
+    );
+    assert!(
+        after_burn.velocity.length() > 20.0,
+        "afterburner must accelerate ship even when throttle is 0"
+    );
+    h.send(SetAfterburner(false));
+
+    // Retrograde brake rotates ship toward -velocity
+    h.set_server_ship(1, |s| {
+        s.rotation = 0.0;
+        s.velocity = Vec2::new(120.0, 25.0);
+    });
+    h.send(SetBrake(true));
+    for _ in 0..10 {
+        h.step();
+    }
+    let braked_rot = h.server.world().get::<Ship>(entity).unwrap().0.rotation;
+    assert!(
+        braked_rot.abs() > 0.1,
+        "retrograde brake must rotate the ship away from prograde"
+    );
+    h.send(SetBrake(false));
+
+    // Target lock selects an in-system ship and fires turret + seeker missile
+    h.send(CycleTarget {
+        hostile_only: false,
+    });
+    settle(&mut h);
+    let locked = h.server.world().get::<TargetLock>(entity).unwrap().0;
+    assert!(locked.is_some(), "CycleTarget must lock an in-system ship");
+
+    h.send(SetFiring(true));
+    h.send(SetSecondaryFiring(true));
+    settle(&mut h);
+    let kinds: Vec<ProjectileKind> = h
+        .server
+        .world_mut()
+        .query::<&Projectile>()
+        .iter(h.server.world())
+        .filter(|p| p.owner == 1)
+        .map(|p| p.kind)
+        .collect();
+    assert!(
+        kinds.contains(&ProjectileKind::TurretBolt),
+        "primary fire must trigger the quad-turret"
+    );
+    assert!(
+        kinds.contains(&ProjectileKind::Missile),
+        "secondary fire must launch a homing missile"
+    );
+}
+
+#[test]
+fn locked_target_aims_fixed_blaster_bolts_toward_target_even_when_ship_faces_away() {
+    let (mut h, entity) = ready();
+    // Place the player facing West (PI radians) while an in-system ship is due North (PI/2)
+    h.set_server_ship(1, |s| {
+        s.position = Vec2::ZERO;
+        s.velocity = Vec2::ZERO;
+        s.rotation = std::f32::consts::PI;
+    });
+
+    h.send(CycleTarget {
+        hostile_only: false,
+    });
+    settle(&mut h);
+    let locked_tid = h
+        .server
+        .world()
+        .get::<TargetLock>(entity)
+        .unwrap()
+        .0
+        .expect("must lock onto an in-system ship");
+
+    // Pin the locked target ship at (0, 200) with zero velocity
+    {
+        let mut q = h.server.world_mut().query::<(&TargetId, &mut Ship)>();
+        for (tid, mut ship) in q.iter_mut(h.server.world_mut()) {
+            if tid.0 == locked_tid {
+                ship.0.position = Vec2::new(0.0, 200.0);
+                ship.0.velocity = Vec2::ZERO;
+            }
+        }
+    }
+    h.set_server_ship(1, |s| {
+        s.position = Vec2::ZERO;
+        s.velocity = Vec2::ZERO;
+        s.rotation = std::f32::consts::PI;
+    });
+
+    h.send(SetFiring(true));
+    h.step();
+    h.step();
+
+    let bolt_headings: Vec<f32> = h
+        .server
+        .world_mut()
+        .query::<(&Projectile, &Heading)>()
+        .iter(h.server.world())
+        .filter(|(p, _)| p.owner == 1 && p.kind == ProjectileKind::Bolt)
+        .map(|(_, heading)| heading.0)
+        .collect();
+    assert!(
+        !bolt_headings.is_empty(),
+        "default light-blaster must spawn a Bolt projectile"
+    );
+    for angle in bolt_headings {
+        assert!(
+            (angle - std::f32::consts::FRAC_PI_2).abs() < 0.25,
+            "locked fixed blaster bolt must aim North (~FRAC_PI_2) toward locked target, got {angle}"
+        );
+    }
+}

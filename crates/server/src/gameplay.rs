@@ -5,14 +5,18 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use bevy_replicon::shared::backend::connected_client::NetworkId;
 use sv_core::{Account, FlightModel, ShipState, WeaponState, star_heat_dps};
-use sv_data::{ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef};
+use sv_data::{
+    ContentPack, OutfitKind, QuestDef, QuestKind, StationPlacement, WeaponDef, WeaponMount,
+};
 use sv_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
-    DockableKind, DockableTag, DockedAt, EncounterOption, EquippedOutfits, Explosion, Fuel,
-    HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite, MeteoriteSize, Notice,
-    PlanetTag, PlayerDied, PlayerReputation, PortMarket, Position, Projectile, QuestTarget,
-    RequestDock, RequestLand, RequestLiftOff, RespondToEncounter, SellCommodity, SetFiring,
+    CycleTarget, DockableKind, DockableTag, DockedAt, EncounterOption, Energy, EquippedOutfits,
+    Explosion, Fuel, HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite,
+    MeteoriteSize, Notice, PlanetTag, PlayerDied, PlayerReputation, PortMarket, Position,
+    Projectile, ProjectileKind, QuestTarget, RequestDock, RequestLand, RequestLiftOff,
+    RespondToEncounter, SellCommodity, SetAfterburner, SetBrake, SetFiring, SetSecondaryFiring,
     SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemControl, SystemMembership,
+    TargetId, TargetLock, Velocity,
 };
 
 use crate::Content;
@@ -46,6 +50,10 @@ pub const SYSTEM_MEMBERSHIP_RADIUS: f32 = 800.0;
 pub const FUEL_PRICE_PER_UNIT: f32 = 1.0;
 pub const WARP_SPEED_MULTIPLIER: f32 = 3.0;
 pub const WARP_FUEL_RATE: f32 = 8.0;
+pub const AFTERBURNER_SPEED_MULTIPLIER: f32 = 1.6;
+pub const AFTERBURNER_ENERGY_RATE: f32 = 18.0;
+pub const TURRET_RANGE: f32 = 580.0;
+pub const MISSILE_DETECT_RANGE: f32 = 900.0;
 pub const DEFAULT_ENCOUNTER_SEED: u64 = 0;
 pub const TRIBUTE_CREDITS: u32 = 50;
 pub const OFFER_QTY: u32 = 3;
@@ -216,6 +224,9 @@ struct Control {
     throttle: f32,
     turn: f32,
     firing: bool,
+    secondary_firing: bool,
+    afterburner: bool,
+    brake: bool,
     warp: bool,
 }
 
@@ -242,6 +253,8 @@ struct ProjectileMotion {
     speed: f32,
     shooter_entity: Option<Entity>,
     shooter_kind: ShipKind,
+    homing_target: Option<Entity>,
+    turn_rate: f32,
 }
 
 #[derive(Component)]
@@ -288,6 +301,10 @@ impl Plugin for GameplayPlugin {
             .add_observer(on_set_throttle)
             .add_observer(on_set_turn)
             .add_observer(on_set_firing)
+            .add_observer(on_set_secondary_firing)
+            .add_observer(on_set_afterburner)
+            .add_observer(on_set_brake)
+            .add_observer(on_cycle_target)
             .add_observer(on_request_land)
             .add_observer(on_request_dock)
             .add_observer(on_request_lift_off)
@@ -345,6 +362,12 @@ impl Plugin for GameplayPlugin {
     }
 }
 
+static NEXT_TARGET_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+fn alloc_target_id() -> u64 {
+    NEXT_TARGET_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 pub fn spawn_ship(
     commands: &mut Commands,
     pack: &ContentPack,
@@ -360,52 +383,64 @@ pub fn spawn_ship(
     let stats = pack
         .loadout_stats(ship_id, &def.default_outfits)
         .expect("validated default loadout");
-    let mut ship_state = ShipState::new(stats.max_shields, stats.max_armor, stats.max_fuel);
+    let mut ship_state = ShipState::new(stats.max_shields, stats.max_armor, stats.max_fuel)
+        .with_energy(stats.max_energy, stats.energy_regen);
     ship_state.position = base + offset;
 
     let mut entity = commands.spawn((
-        Replicated,
-        Ship(ship_state),
-        EquippedOutfits {
-            ids: def.default_outfits.clone(),
-        },
-        weapon_banks(pack, &def.default_outfits),
-        ShipSpec {
-            flight: FlightModel {
-                turn_rate: def.turn_rate,
-                acceleration: def.acceleration,
-                max_speed: def.max_speed,
-                drag: DRAG,
+        (
+            Replicated,
+            Ship(ship_state),
+            EquippedOutfits {
+                ids: def.default_outfits.clone(),
             },
-            cargo_capacity: def.cargo,
-        },
-        Control::default(),
-        LastDamagedBy::default(),
-        HeatWarningCooldown::default(),
-        Owner(owner.unwrap_or(0)),
-        Position(base + offset),
-        Heading(0.0),
-        Hull {
-            shields: stats.max_shields,
-            max_shields: stats.max_shields,
-            armor: stats.max_armor,
-            max_armor: stats.max_armor,
-        },
-        Fuel {
-            current: stats.max_fuel,
-            max: stats.max_fuel,
-        },
-        ShipInfo {
-            def_id: def.id.clone(),
-            kind,
-            owner: if kind == ShipKind::Player {
-                owner
-            } else {
-                None
+            weapon_banks(pack, &def.default_outfits),
+            ShipSpec {
+                flight: FlightModel {
+                    turn_rate: def.turn_rate,
+                    acceleration: def.acceleration,
+                    max_speed: def.max_speed,
+                    drag: DRAG,
+                },
+                cargo_capacity: def.cargo,
             },
-            name: def.name.clone(),
-        },
-        SystemMembership(system.to_owned()),
+            Control::default(),
+            LastDamagedBy::default(),
+            HeatWarningCooldown::default(),
+            Owner(owner.unwrap_or(0)),
+            Position(base + offset),
+            Velocity(Vec2::ZERO),
+            Heading(0.0),
+        ),
+        (
+            TargetId(alloc_target_id()),
+            TargetLock::default(),
+            Hull {
+                shields: stats.max_shields,
+                max_shields: stats.max_shields,
+                armor: stats.max_armor,
+                max_armor: stats.max_armor,
+            },
+            Fuel {
+                current: stats.max_fuel,
+                max: stats.max_fuel,
+            },
+            Energy {
+                current: stats.max_energy,
+                max: stats.max_energy,
+            },
+            ShipInfo {
+                def_id: def.id.clone(),
+                kind,
+                owner: if kind == ShipKind::Player {
+                    owner
+                } else {
+                    None
+                },
+                name: def.name.clone(),
+            },
+            SystemMembership(system.to_owned()),
+        ),
     ));
 
     if kind == ShipKind::Player {
@@ -1146,6 +1181,114 @@ fn on_set_firing(
     }
 }
 
+fn on_set_secondary_firing(
+    trigger: On<FromClient<SetSecondaryFiring>>,
+    clients: Query<&NetworkId>,
+    mut ships: Query<(&Owner, &mut Control)>,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let firing = trigger.event().0;
+    debug!("server: owner={owner} set secondary_firing={firing}");
+    for (ship_owner, mut control) in &mut ships {
+        if ship_owner.0 == owner {
+            control.secondary_firing = firing;
+        }
+    }
+}
+
+fn on_set_afterburner(
+    trigger: On<FromClient<SetAfterburner>>,
+    clients: Query<&NetworkId>,
+    mut ships: Query<(&Owner, &mut Control)>,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let afterburner = trigger.event().0;
+    debug!("server: owner={owner} set afterburner={afterburner}");
+    for (ship_owner, mut control) in &mut ships {
+        if ship_owner.0 == owner {
+            control.afterburner = afterburner;
+        }
+    }
+}
+
+fn on_set_brake(
+    trigger: On<FromClient<SetBrake>>,
+    clients: Query<&NetworkId>,
+    mut ships: Query<(&Owner, &mut Control)>,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let brake = trigger.event().0;
+    debug!("server: owner={owner} set brake={brake}");
+    for (ship_owner, mut control) in &mut ships {
+        if ship_owner.0 == owner {
+            control.brake = brake;
+        }
+    }
+}
+
+#[allow(clippy::type_complexity)]
+fn on_cycle_target(
+    trigger: On<FromClient<CycleTarget>>,
+    clients: Query<&NetworkId>,
+    mut players: Query<
+        (
+            Entity,
+            &Owner,
+            &Position,
+            &SystemMembership,
+            &mut TargetLock,
+        ),
+        With<PlayerShip>,
+    >,
+    candidates: Query<
+        (
+            Entity,
+            &TargetId,
+            &Position,
+            &ShipInfo,
+            &SystemMembership,
+            Option<&Aggro>,
+        ),
+        (With<Ship>, Without<DockedAt>),
+    >,
+) {
+    let owner = raw_id(trigger.client_id, &clients);
+    let hostile_only = trigger.event().hostile_only;
+    let Some((my_entity, _, my_pos, my_sys, mut lock)) = players
+        .iter_mut()
+        .find(|(_, ship_owner, ..)| ship_owner.0 == owner)
+    else {
+        return;
+    };
+    let mut matching: Vec<(u32, u64)> = candidates
+        .iter()
+        .filter(|(entity, _, _, info, sys, aggro)| {
+            if *entity == my_entity || sys.0 != my_sys.0 {
+                return false;
+            }
+            if hostile_only {
+                info.kind == ShipKind::Pirate || aggro.is_some_and(|a| a.0 == owner)
+            } else {
+                true
+            }
+        })
+        .map(|(_, tid, pos, ..)| (my_pos.0.distance(pos.0).to_bits(), tid.0))
+        .collect();
+    matching.sort_unstable();
+    if matching.is_empty() {
+        lock.0 = None;
+        return;
+    }
+    let next = match lock.0 {
+        Some(current) => matching
+            .iter()
+            .position(|(_, tid)| *tid == current)
+            .map_or(matching[0].1, |idx| matching[(idx + 1) % matching.len()].1),
+        None => matching[0].1,
+    };
+    lock.0 = Some(next);
+}
+
 fn apply_ship_control(
     time: Res<Time>,
     mut ships: Query<(&Control, &ShipSpec, &mut Ship), Without<DockedAt>>,
@@ -1154,13 +1297,27 @@ fn apply_ship_control(
     for (control, spec, mut ship) in &mut ships {
         let mut model = spec.flight;
         let warping = control.warp && ship.0.fuel > 0.0;
+        let mut afterburning = false;
         if warping {
             model.max_speed *= WARP_SPEED_MULTIPLIER;
             model.acceleration *= WARP_SPEED_MULTIPLIER;
             ship.0.fuel = (ship.0.fuel - WARP_FUEL_RATE * dt).max(0.0);
+        } else if control.afterburner && ship.0.drain_energy(AFTERBURNER_ENERGY_RATE, dt) {
+            model.max_speed *= AFTERBURNER_SPEED_MULTIPLIER;
+            model.acceleration *= AFTERBURNER_SPEED_MULTIPLIER;
+            afterburning = true;
         }
-        let throttle = if warping { 1.0 } else { control.throttle };
-        ship.0.apply_control(control.turn, throttle, &model, dt);
+        let turn = if control.turn == 0.0 && control.brake && !warping {
+            sv_core::retrograde_turn(ship.0.rotation, ship.0.velocity)
+        } else {
+            control.turn
+        };
+        let throttle = if warping || (afterburning && control.throttle == 0.0) {
+            1.0
+        } else {
+            control.throttle
+        };
+        ship.0.apply_control(turn, throttle, &model, dt);
     }
 }
 
@@ -1472,56 +1629,281 @@ type FiringShips<'w, 's> = Query<
     's,
     (
         Entity,
+        &'static TargetId,
         &'static Control,
         &'static Owner,
         &'static ShipInfo,
-        &'static Ship,
+        &'static SystemMembership,
+        &'static TargetLock,
+        Option<&'static Aggro>,
+        &'static mut Ship,
         &'static mut WeaponBanks,
     ),
     Without<DockedAt>,
 >;
 
+struct TargetSnapshot {
+    entity: Entity,
+    target_id: u64,
+    kind: ShipKind,
+    system: String,
+    position: Vec2,
+    velocity: Vec2,
+    aggro_owner: Option<u64>,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn select_weapon_target<'a>(
+    shooter: Entity,
+    shooter_owner: u64,
+    shooter_kind: ShipKind,
+    shooter_sys: &str,
+    shooter_pos: Vec2,
+    locked_id: Option<u64>,
+    max_range: f32,
+    targets: &'a [TargetSnapshot],
+) -> Option<&'a TargetSnapshot> {
+    if let Some(tid) = locked_id
+        && let Some(found) = targets.iter().find(|t| {
+            t.entity != shooter
+                && t.target_id == tid
+                && t.system == shooter_sys
+                && shooter_pos.distance(t.position) <= max_range
+        })
+    {
+        return Some(found);
+    }
+    targets
+        .iter()
+        .filter(|t| {
+            if t.entity == shooter || t.system != shooter_sys {
+                return false;
+            }
+            let dist = shooter_pos.distance(t.position);
+            if dist > max_range {
+                return false;
+            }
+            match shooter_kind {
+                ShipKind::Player => {
+                    t.kind == ShipKind::Pirate || t.aggro_owner == Some(shooter_owner)
+                }
+                ShipKind::Pirate => matches!(t.kind, ShipKind::Player | ShipKind::Defender),
+                ShipKind::Defender => t.kind == ShipKind::Pirate,
+                _ => t.aggro_owner.is_some(),
+            }
+        })
+        .min_by_key(|t| shooter_pos.distance(t.position).to_bits())
+}
+
 fn fire_weapons(mut commands: Commands, time: Res<Time>, mut ships: FiringShips) {
     let dt = time.delta_secs();
-    for (entity, control, owner, info, ship, mut banks) in &mut ships {
+    let targets: Vec<TargetSnapshot> = ships
+        .iter()
+        .map(
+            |(entity, tid, _, _, info, sys, _, aggro, ship, _)| TargetSnapshot {
+                entity,
+                target_id: tid.0,
+                kind: info.kind,
+                system: sys.0.clone(),
+                position: ship.0.position,
+                velocity: ship.0.velocity,
+                aggro_owner: aggro.map(|a| a.0),
+            },
+        )
+        .collect();
+
+    for (entity, _, control, owner, info, membership, lock, _, mut ship, mut banks) in &mut ships {
+        let fixed_total = banks
+            .0
+            .iter()
+            .filter(|w| matches!(w.def.mount, WeaponMount::Fixed))
+            .count();
+        let mut fixed_index = 0usize;
+
         for blaster in &mut banks.0 {
             blaster.state.tick(dt);
-            let cooldown = blaster.def.cooldown;
-            if control.firing && blaster.state.try_fire(cooldown) {
-                let direction = ship.0.heading();
-                commands.spawn((
-                    Replicated,
-                    Projectile {
-                        damage: blaster.def.damage,
-                        ttl: blaster.def.projectile_ttl,
-                        owner: owner.0,
-                    },
-                    ProjectileMotion {
-                        speed: blaster.def.projectile_speed,
-                        shooter_entity: Some(entity),
-                        shooter_kind: info.kind,
-                    },
-                    Position(ship.0.position + direction * SHIP_RADIUS),
-                    Heading(ship.0.rotation),
-                ));
+            let is_fixed = matches!(blaster.def.mount, WeaponMount::Fixed);
+            let slot_idx = if is_fixed {
+                let current = fixed_index;
+                fixed_index += 1;
+                current
+            } else {
+                0
+            };
+
+            let triggered = match blaster.def.mount {
+                WeaponMount::Fixed | WeaponMount::Turret => control.firing,
+                WeaponMount::Missile { .. } => {
+                    control.secondary_firing || control.firing && info.kind != ShipKind::Player
+                }
+            };
+            if !triggered || blaster.state.cooldown_remaining > 0.0 {
+                continue;
             }
+            let energy_cost = blaster.def.effective_energy_cost();
+            if !ship.0.try_spend_energy(energy_cost) {
+                continue;
+            }
+            let _ = blaster.state.try_fire(blaster.def.cooldown);
+
+            let (angle, spawn_pos, kind, homing_target, turn_rate) = match blaster.def.mount {
+                WeaponMount::Fixed => {
+                    let aimed_angle = lock
+                        .0
+                        .and_then(|tid| {
+                            targets.iter().find(|t| {
+                                t.entity != entity && t.target_id == tid && t.system == membership.0
+                            })
+                        })
+                        .map_or(ship.0.rotation, |target| {
+                            let lead = sv_core::lead_target_position(
+                                ship.0.position,
+                                target.position,
+                                target.velocity,
+                                blaster.def.projectile_speed,
+                            );
+                            let delta = lead - ship.0.position;
+                            delta.y.atan2(delta.x)
+                        });
+                    let dir = Vec2::new(aimed_angle.cos(), aimed_angle.sin());
+                    let right = Vec2::new(-dir.y, dir.x);
+                    let lateral = if fixed_total > 1 {
+                        (slot_idx as f32 - (fixed_total as f32 - 1.0) * 0.5) * 5.0
+                    } else {
+                        0.0
+                    };
+                    (
+                        aimed_angle,
+                        ship.0.position + dir * SHIP_RADIUS + right * lateral,
+                        ProjectileKind::Bolt,
+                        None,
+                        0.0,
+                    )
+                }
+                WeaponMount::Turret => {
+                    let aimed_angle = select_weapon_target(
+                        entity,
+                        owner.0,
+                        info.kind,
+                        &membership.0,
+                        ship.0.position,
+                        lock.0,
+                        TURRET_RANGE,
+                        &targets,
+                    )
+                    .map_or(ship.0.rotation, |target| {
+                        let lead = sv_core::lead_target_position(
+                            ship.0.position,
+                            target.position,
+                            target.velocity,
+                            blaster.def.projectile_speed,
+                        );
+                        let delta = lead - ship.0.position;
+                        delta.y.atan2(delta.x)
+                    });
+                    let dir = Vec2::new(aimed_angle.cos(), aimed_angle.sin());
+                    (
+                        aimed_angle,
+                        ship.0.position + dir * SHIP_RADIUS,
+                        ProjectileKind::TurretBolt,
+                        None,
+                        0.0,
+                    )
+                }
+                WeaponMount::Missile { turn_rate } => {
+                    let chosen = select_weapon_target(
+                        entity,
+                        owner.0,
+                        info.kind,
+                        &membership.0,
+                        ship.0.position,
+                        lock.0,
+                        MISSILE_DETECT_RANGE,
+                        &targets,
+                    );
+                    let aimed_angle = chosen.map_or(ship.0.rotation, |target| {
+                        let delta = target.position - ship.0.position;
+                        delta.y.atan2(delta.x)
+                    });
+                    let dir = Vec2::new(aimed_angle.cos(), aimed_angle.sin());
+                    (
+                        aimed_angle,
+                        ship.0.position + dir * SHIP_RADIUS,
+                        ProjectileKind::Missile,
+                        chosen.map(|t| t.entity),
+                        turn_rate,
+                    )
+                }
+            };
+
+            commands.spawn((
+                Replicated,
+                Projectile {
+                    damage: blaster.def.damage,
+                    ttl: blaster.def.projectile_ttl,
+                    owner: owner.0,
+                    kind,
+                },
+                ProjectileMotion {
+                    speed: blaster.def.projectile_speed,
+                    shooter_entity: Some(entity),
+                    shooter_kind: info.kind,
+                    homing_target,
+                    turn_rate,
+                },
+                Position(spawn_pos),
+                Heading(angle),
+            ));
         }
     }
 }
 
+type ProjectileTargetShips<'w, 's> =
+    Query<'w, 's, (Entity, &'static Position, &'static ShipInfo), (With<Ship>, Without<DockedAt>)>;
+
 fn projectile_flight(
     mut commands: Commands,
     time: Res<Time>,
-    mut projectiles: Query<(
-        Entity,
-        &Heading,
-        &mut Position,
-        &mut Projectile,
-        &ProjectileMotion,
-    )>,
+    ships: ProjectileTargetShips,
+    mut projectiles: Query<
+        (
+            Entity,
+            &mut Heading,
+            &mut Position,
+            &mut Projectile,
+            &ProjectileMotion,
+        ),
+        Without<Ship>,
+    >,
 ) {
     let dt = time.delta_secs();
-    for (entity, heading, mut position, mut projectile, motion) in &mut projectiles {
+    for (entity, mut heading, mut position, mut projectile, motion) in &mut projectiles {
+        if motion.turn_rate > 0.0 {
+            let target_pos = motion
+                .homing_target
+                .and_then(|target_ent| ships.get(target_ent).ok().map(|(_, pos, _)| pos.0))
+                .or_else(|| {
+                    ships
+                        .iter()
+                        .filter(|(ent, pos, info)| {
+                            Some(*ent) != motion.shooter_entity
+                                && info.owner != Some(projectile.owner)
+                                && info.kind == ShipKind::Pirate
+                                && position.0.distance(pos.0) <= MISSILE_DETECT_RANGE
+                        })
+                        .min_by_key(|(_, pos, _)| position.0.distance(pos.0).to_bits())
+                        .map(|(_, pos, _)| pos.0)
+                });
+            if let Some(target_pos) = target_pos {
+                heading.0 = sv_core::steer_angle_toward(
+                    heading.0,
+                    position.0,
+                    target_pos,
+                    motion.turn_rate,
+                    dt,
+                );
+            }
+        }
         let direction = Vec2::new(heading.0.cos(), heading.0.sin());
         position.0 += direction * motion.speed * dt;
         projectile.ttl -= dt;
@@ -1994,10 +2376,13 @@ fn star_heat(
     }
 }
 
-fn shield_regen(time: Res<Time>, mut ships: Query<&mut Ship>) {
+fn shield_regen(time: Res<Time>, mut ships: Query<(&Control, &mut Ship)>) {
     let dt = time.delta_secs();
-    for mut ship in &mut ships {
+    for (control, mut ship) in &mut ships {
         ship.0.regen_shields(SHIELD_REGEN, dt);
+        if !control.afterburner {
+            ship.0.regen_energy(dt);
+        }
     }
 }
 
@@ -2316,13 +2701,48 @@ fn update_system_membership(
     }
 }
 
-fn sync_ship_state(mut ships: Query<(&Ship, &mut Position, &mut Heading, &mut Hull, &mut Fuel)>) {
-    for (ship, mut position, mut heading, mut hull, mut fuel) in &mut ships {
+#[allow(clippy::type_complexity)]
+fn sync_ship_state(
+    valid_targets: Query<(&TargetId, &SystemMembership), (With<Ship>, Without<DockedAt>)>,
+    mut ships: Query<(
+        &Ship,
+        &SystemMembership,
+        &mut Position,
+        &mut Velocity,
+        &mut Heading,
+        &mut Hull,
+        &mut Fuel,
+        &mut Energy,
+        &mut TargetLock,
+    )>,
+) {
+    for (
+        ship,
+        membership,
+        mut position,
+        mut velocity,
+        mut heading,
+        mut hull,
+        mut fuel,
+        mut energy,
+        mut lock,
+    ) in &mut ships
+    {
         position.0 = ship.0.position;
+        velocity.0 = ship.0.velocity;
         heading.0 = ship.0.rotation;
         hull.shields = ship.0.shields;
         hull.armor = ship.0.armor;
         fuel.current = ship.0.fuel;
+        energy.current = ship.0.energy;
+        energy.max = ship.0.max_energy;
+        if let Some(tid) = lock.0
+            && !valid_targets
+                .iter()
+                .any(|(other_id, other_sys)| other_id.0 == tid && other_sys.0 == membership.0)
+        {
+            lock.0 = None;
+        }
     }
 }
 
@@ -2522,6 +2942,7 @@ fn try_dock(
     }
     membership.0.clone_from(&port.system);
     ship.0.velocity = Vec2::ZERO;
+    ship.0.energy = ship.0.max_energy;
     *control = Control::default();
     if port.kind == DockableKind::Station {
         let normal = (ship.0.position - position).normalize_or(Vec2::X);
