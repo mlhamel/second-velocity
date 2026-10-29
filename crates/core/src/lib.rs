@@ -18,6 +18,9 @@ pub fn orbit_position(
     center + Vec2::new(angle.cos() as f32, angle.sin() as f32) * radius
 }
 
+pub const DEFAULT_MAX_ENERGY: f32 = 60.0;
+pub const DEFAULT_ENERGY_REGEN: f32 = 10.0;
+
 #[derive(Debug, Clone)]
 pub struct ShipState {
     pub position: Vec2,
@@ -29,6 +32,9 @@ pub struct ShipState {
     pub max_armor: f32,
     pub fuel: f32,
     pub max_fuel: f32,
+    pub energy: f32,
+    pub max_energy: f32,
+    pub energy_regen: f32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -51,7 +57,17 @@ impl ShipState {
             max_armor,
             fuel: max_fuel,
             max_fuel,
+            energy: DEFAULT_MAX_ENERGY,
+            max_energy: DEFAULT_MAX_ENERGY,
+            energy_regen: DEFAULT_ENERGY_REGEN,
         }
+    }
+
+    pub fn with_energy(mut self, max_energy: f32, energy_regen: f32) -> Self {
+        self.energy = max_energy;
+        self.max_energy = max_energy;
+        self.energy_regen = energy_regen;
+        self
     }
 
     pub fn heading(&self) -> Vec2 {
@@ -86,9 +102,98 @@ impl ShipState {
         self.shields = (self.shields + rate * dt).min(self.max_shields);
     }
 
+    pub fn regen_energy(&mut self, dt: f32) {
+        if dt > 0.0 && self.energy_regen > 0.0 {
+            self.energy = (self.energy + self.energy_regen * dt).min(self.max_energy);
+        }
+    }
+
+    pub fn try_spend_energy(&mut self, cost: f32) -> bool {
+        if cost <= 0.0 {
+            return true;
+        }
+        if !cost.is_finite() || self.energy < cost {
+            return false;
+        }
+        self.energy = (self.energy - cost).max(0.0);
+        true
+    }
+
+    pub fn drain_energy(&mut self, rate: f32, dt: f32) -> bool {
+        if self.energy <= 0.0 || rate <= 0.0 || dt <= 0.0 || !rate.is_finite() || !dt.is_finite() {
+            return false;
+        }
+        self.energy = (self.energy - rate * dt).max(0.0);
+        true
+    }
+
     pub fn is_destroyed(&self) -> bool {
         self.armor <= 0.0
     }
+}
+
+/// Computes a proportional turn input in `[-1.0, 1.0]` that rotates the ship
+/// toward its retrograde (`-velocity`) vector, or `0.0` when nearly stopped or aligned.
+pub fn retrograde_turn(rotation: f32, velocity: Vec2) -> f32 {
+    if !rotation.is_finite() || !velocity.is_finite() || velocity.length_squared() < 4.0 {
+        return 0.0;
+    }
+    let retro = -velocity;
+    let desired = retro.y.atan2(retro.x);
+    let diff = (desired - rotation + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+        - std::f32::consts::PI;
+    if diff.abs() < 0.04 {
+        0.0
+    } else {
+        (diff / 0.25).clamp(-1.0, 1.0)
+    }
+}
+
+/// First-order intercept lead point for aiming a projectile of `projectile_speed`
+/// from `shooter_pos` at a moving target.
+pub fn lead_target_position(
+    shooter_pos: Vec2,
+    target_pos: Vec2,
+    target_velocity: Vec2,
+    projectile_speed: f32,
+) -> Vec2 {
+    if !shooter_pos.is_finite()
+        || !target_pos.is_finite()
+        || !target_velocity.is_finite()
+        || !projectile_speed.is_finite()
+        || projectile_speed <= 0.0
+    {
+        return target_pos;
+    }
+    let dist = shooter_pos.distance(target_pos);
+    let intercept_secs = (dist / projectile_speed).clamp(0.0, 3.0);
+    target_pos + target_velocity * intercept_secs
+}
+
+/// Steers `current_angle` toward `to - from` by at most `max_turn_rate * dt` radians.
+pub fn steer_angle_toward(
+    current_angle: f32,
+    from: Vec2,
+    to: Vec2,
+    max_turn_rate: f32,
+    dt: f32,
+) -> f32 {
+    let delta = to - from;
+    if !current_angle.is_finite()
+        || !delta.is_finite()
+        || delta.length_squared() < 1e-4
+        || !max_turn_rate.is_finite()
+        || max_turn_rate <= 0.0
+        || !dt.is_finite()
+        || dt <= 0.0
+    {
+        return current_angle;
+    }
+    let desired = delta.y.atan2(delta.x);
+    let diff = (desired - current_angle + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
+        - std::f32::consts::PI;
+    let max_step = max_turn_rate * dt;
+    current_angle + diff.clamp(-max_step, max_step)
 }
 
 #[derive(Debug, Clone)]
@@ -566,5 +671,46 @@ mod tests {
             star_heat_dps(radius * STAR_CORE_FRACTION * 0.9, radius) >= STAR_CORE_DPS,
             "the core fraction must be lethal regardless of hull"
         );
+    }
+
+    #[test]
+    fn energy_capacitor_spends_drains_and_regenerates_to_max() {
+        let mut ship = ShipState::new(40.0, 25.0, 100.0).with_energy(50.0, 10.0);
+        assert!(ship.try_spend_energy(20.0));
+        assert_eq!(ship.energy, 30.0);
+        assert!(!ship.try_spend_energy(35.0));
+        assert_eq!(ship.energy, 30.0);
+        assert!(ship.drain_energy(15.0, 1.0));
+        assert_eq!(ship.energy, 15.0);
+        ship.regen_energy(2.0);
+        assert_eq!(ship.energy, 35.0);
+        ship.regen_energy(5.0);
+        assert_eq!(ship.energy, 50.0);
+    }
+
+    #[test]
+    fn retrograde_turn_steers_opposite_velocity_and_stops_when_aligned() {
+        assert_eq!(retrograde_turn(0.0, Vec2::ZERO), 0.0);
+        // Moving +X while facing +X (0.0) should turn hard toward PI/-PI
+        assert!(retrograde_turn(0.0, Vec2::new(100.0, 10.0)).abs() > 0.9);
+        // Facing -X (PI) while moving +X is already retrograde
+        assert_eq!(
+            retrograde_turn(std::f32::consts::PI, Vec2::new(100.0, 0.0)),
+            0.0
+        );
+    }
+
+    #[test]
+    fn lead_target_and_missile_steering_behave_predictably() {
+        let lead = lead_target_position(
+            Vec2::ZERO,
+            Vec2::new(400.0, 0.0),
+            Vec2::new(0.0, 100.0),
+            400.0,
+        );
+        assert!((lead - Vec2::new(400.0, 100.0)).length() < 1e-3);
+
+        let steered = steer_angle_toward(0.0, Vec2::ZERO, Vec2::new(0.0, 100.0), 2.0, 0.25);
+        assert!((steered - 0.5).abs() < 1e-4);
     }
 }
