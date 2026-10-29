@@ -54,11 +54,25 @@ footprints, and the game picks them up automatically.
 
 - Limited palettes: a 4–6 shade ramp per faction — terran (steel blue),
   vellari (cream/gold), sylph (teal green), korath (rust red-brown),
-  auroran (burnt orange) — shared by the generator and `kind_color` in
-  the client
+  auroran (burnt orange) — shared by the generator and `kind_color` in the
+  client
 - 1 px dark outlines on silhouettes; light from upper-right (+x, −y)
 - Bayer-dithered shading ramps and stepped glow bands (no smooth gradients)
 - Engine nozzles at −x, cockpit glints near +x; ships face +x
+
+## Typography
+
+All UI text renders in Press Start 2P (`assets/fonts/press-start-2p.ttf`,
+SIL OFL, license alongside), the shared `UiFont` resource from
+`crates/client/src/ui.rs`:
+
+- Font sizes stay on the font's 8px grid: 8 (dense lines, hints, footers),
+  16 (labels, stats, menu items), 24 (system banner, PAUSED), 40 (title).
+- UI strings are ASCII-only — the font has no em dash or typographic
+  punctuation; use ` - ` where prose wanted a dash.
+- Text colors stay in the 0–1 range so UI never blooms (ADR-0016); the
+  "lights" on the title screen are over-bright dithered glow sprites behind
+  the text, which bloom through the HDR camera.
 
 ## Skies
 
