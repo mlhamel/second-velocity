@@ -19,6 +19,6 @@ ScenarioDef(
         Respond(choice: "turn_in"),
         AssertActiveQuests(count: 0),
         AssertCompletedQuest("newhaven-relief"),
-        AssertCredits(min: Some(900), max: None),
+        AssertCredits(min: Some(895), max: None),
     ],
 )

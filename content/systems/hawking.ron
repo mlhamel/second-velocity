@@ -14,7 +14,7 @@
         (
             id: "hawking-stand",
             shipyard: Some((ships: ["shuttle", "terran-courier", "terran-frigate", "korath-cutter"])),
-            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "quad-turret", "seeker-rack", "shield-generator-1", "shield-generator-2", "aux-fuel-tank", "capacitor-bank"])),
             name: "Hawking Stand",
             description: "A gantry town of fuel barges and salvage yards that never quite turns its engines off. The bar serves drink tokens stamped 'VOID WHERE PROHIBITED'.",
             sprite: Some("textures/planets/hawking-stand.png"),

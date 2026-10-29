@@ -235,10 +235,19 @@ impl ContentPack {
                         [w.damage, w.cooldown, w.projectile_speed, w.projectile_ttl]
                             .into_iter()
                             .all(positive)
+                            && w.energy_cost.is_none_or(|c| c.is_finite() && c >= 0.0)
+                            && match w.mount {
+                                crate::WeaponMount::Fixed | crate::WeaponMount::Turret => true,
+                                crate::WeaponMount::Missile { turn_rate } => positive(turn_rate),
+                            }
                     }
                     crate::OutfitKind::ShieldGenerator { max_shields } => positive(*max_shields),
                     crate::OutfitKind::FuelTank { fuel } => positive(*fuel),
                     crate::OutfitKind::ArmorPlate { armor } => positive(*armor),
+                    crate::OutfitKind::Reactor {
+                        max_energy,
+                        energy_regen,
+                    } => positive(*max_energy) && positive(*energy_regen),
                 };
             if !valid {
                 return Err(ContentError::UnknownReference {

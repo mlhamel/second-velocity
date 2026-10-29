@@ -1,0 +1,16 @@
+(
+    id: "seeker-rack",
+    name: "Hound Seeker Rack",
+    description: "Self-guiding ordnance for targets that think turning is a policy. Triggered on the secondary fire circuit.",
+    price: 4200,
+    mass: 4.0,
+    kind: Weapon((
+        damage: 22.0,
+        cooldown: 1.10,
+        projectile_speed: 360.0,
+        projectile_ttl: 2.8,
+        energy_cost: Some(14.0),
+        mount: Missile(turn_rate: 2.8),
+    )),
+    icon: Some("textures/outfits/seeker-rack.png"),
+)

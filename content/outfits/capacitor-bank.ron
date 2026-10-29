@@ -1,0 +1,9 @@
+(
+    id: "capacitor-bank",
+    name: "Surge Capacitor Bank",
+    description: "Forty extra units of reserve charge and heavier bus bars, for pilots who hold both triggers and the afterburner at once.",
+    price: 1600,
+    mass: 2.5,
+    kind: Reactor(max_energy: 40.0, energy_regen: 6.0),
+    icon: Some("textures/outfits/capacitor-bank.png"),
+)

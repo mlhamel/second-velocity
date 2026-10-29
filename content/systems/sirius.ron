@@ -14,7 +14,7 @@
         (
             id: "sirius-prime",
             shipyard: Some((ships: ["shuttle", "vellari-sprinter", "vellari-clipper", "terran-frigate"])),
-            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "quad-turret", "shield-generator-1", "shield-generator-2", "aux-fuel-tank", "capacitor-bank"])),
             name: "Sirius Prime",
             description: "A world of glittering domes and glittering debts.",
             chief: Some((

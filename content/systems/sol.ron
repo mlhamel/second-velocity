@@ -14,7 +14,7 @@
         (
             id: "earth",
             shipyard: Some((ships: ["shuttle", "terran-courier", "terran-hauler", "patrol"])),
-            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "quad-turret", "seeker-rack", "shield-generator-1", "shield-generator-2", "aux-fuel-tank", "capacitor-bank"])),
             name: "Earth",
             description: "Cradle of humanity and seat of the Confederation. The sky bazaars sell everything except patience.",
             sprite: Some("textures/planets/earth.png"),
@@ -56,7 +56,7 @@
         (
             id: "wayfarer-exchange",
             shipyard: Some((ships: ["shuttle", "terran-courier", "terran-hauler", "sylph-skiff"])),
-            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "shield-generator-1", "shield-generator-2", "aux-fuel-tank"])),
+            outfitter: Some((outfits: ["light-blaster", "pulse-blaster", "quad-turret", "seeker-rack", "shield-generator-1", "shield-generator-2", "aux-fuel-tank", "capacitor-bank"])),
             name: "Wayfarer Exchange",
             description: "A freeport bolted into the quiet between traffic lanes. Its charter promises neutral ground; its ledger charges by the square metre.",
             radius: 44.0,

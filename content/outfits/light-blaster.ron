@@ -9,6 +9,7 @@
         cooldown: 0.25,
         projectile_speed: 420.0,
         projectile_ttl: 1.2,
+        energy_cost: Some(2.0),
     )),
     icon: Some("textures/outfits/light-blaster.png"),
 )

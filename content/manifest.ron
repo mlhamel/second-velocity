@@ -49,9 +49,12 @@
     outfits: [
         "outfits/light-blaster.ron",
         "outfits/pulse-blaster.ron",
+        "outfits/quad-turret.ron",
+        "outfits/seeker-rack.ron",
         "outfits/shield-generator-1.ron",
         "outfits/shield-generator-2.ron",
         "outfits/aux-fuel-tank.ron",
+        "outfits/capacitor-bank.ron",
     ],
     commodities: [
         "commodities/food.ron",
@@ -93,6 +96,7 @@
         "scenarios/market-drift.ron",
         "scenarios/contract-refresh.ron",
         "scenarios/faction-control.ron",
+        "scenarios/tactical-combat.ron",
     ],
     factions: [
         "factions/confederation.ron",

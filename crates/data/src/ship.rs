@@ -40,6 +40,24 @@ impl ShipSize {
             Self::Capital => "capital",
         }
     }
+
+    pub const fn default_max_energy(self) -> f32 {
+        match self {
+            Self::Light => 60.0,
+            Self::Medium => 85.0,
+            Self::Heavy => 120.0,
+            Self::Capital => 160.0,
+        }
+    }
+
+    pub const fn default_energy_regen(self) -> f32 {
+        match self {
+            Self::Light => 10.0,
+            Self::Medium => 13.0,
+            Self::Heavy => 16.0,
+            Self::Capital => 20.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -62,7 +80,23 @@ pub struct ShipDef {
     pub cargo: u32,
     pub weapon_slots: u32,
     #[serde(default)]
+    pub max_energy: Option<f32>,
+    #[serde(default)]
+    pub energy_regen: Option<f32>,
+    #[serde(default)]
     pub default_outfits: Vec<String>,
     #[serde(default)]
     pub sprite: Option<String>,
+}
+
+impl ShipDef {
+    pub fn base_max_energy(&self) -> f32 {
+        self.max_energy
+            .unwrap_or_else(|| self.size.default_max_energy())
+    }
+
+    pub fn base_energy_regen(&self) -> f32 {
+        self.energy_regen
+            .unwrap_or_else(|| self.size.default_energy_regen())
+    }
 }

@@ -13,10 +13,10 @@ fn base_pack_loads() {
     assert_eq!(pack.manifest.id, "sv-base");
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
-    assert_eq!(pack.outfits.len(), 5);
+    assert_eq!(pack.outfits.len(), 8);
     assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 15);
+    assert_eq!(pack.scenarios.len(), 16);
     assert_eq!(pack.factions.len(), 4);
 
     let confederation = pack

@@ -579,6 +579,8 @@ def main():
     for name, body, tip in [
         ("light-blaster.png", (170, 190, 200), (95, 230, 220)),
         ("pulse-blaster.png", (150, 140, 190), (230, 120, 235)),
+        ("quad-turret.png", (130, 175, 195), (245, 200, 90)),
+        ("seeker-rack.png", (195, 115, 95), (250, 225, 110)),
     ]:
         canvas = draw_weapon(body, tip)
         write_if_missing(os.path.join(root, "outfits", name), canvas, force)
@@ -586,6 +588,7 @@ def main():
     for name, ring, core in [
         ("shield-generator-1.png", (90, 200, 185), (150, 235, 225)),
         ("shield-generator-2.png", (80, 160, 235), (150, 200, 250)),
+        ("capacitor-bank.png", (230, 185, 75), (250, 235, 140)),
     ]:
         canvas = draw_shield_generator(ring, core)
         write_if_missing(os.path.join(root, "outfits", name), canvas, force)

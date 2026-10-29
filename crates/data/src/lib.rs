@@ -16,7 +16,7 @@ pub use faction::{FactionDef, FactionSide};
 pub use loader::ContentPack;
 pub use loadout::LoadoutStats;
 pub use manifest::Manifest;
-pub use outfit::{OutfitDef, OutfitKind, WeaponDef};
+pub use outfit::{OutfitDef, OutfitKind, WeaponDef, WeaponMount};
 pub use quest::{QuestDef, QuestKind};
 pub use scenario::{ScenarioDef, ScenarioStep};
 pub use ship::{ShipDef, ShipSize};

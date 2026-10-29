@@ -5,6 +5,8 @@ pub struct LoadoutStats {
     pub max_shields: f32,
     pub max_armor: f32,
     pub max_fuel: f32,
+    pub max_energy: f32,
+    pub energy_regen: f32,
     pub weapon_slots_used: u32,
 }
 
@@ -26,9 +28,11 @@ pub(crate) fn stats_for(
         max_shields: ship.max_shields,
         max_armor: ship.max_armor,
         max_fuel: ship.fuel as f32,
+        max_energy: ship.base_max_energy(),
+        energy_regen: ship.base_energy_regen(),
         weapon_slots_used: 0,
     };
-    let (mut shield, mut fuel, mut armor) = (false, false, false);
+    let (mut shield, mut fuel, mut armor, mut reactor) = (false, false, false, false);
     for id in ids {
         let outfit = outfits
             .iter()
@@ -67,11 +71,28 @@ pub(crate) fn stats_for(
                 armor = true;
                 stats.max_armor += extra;
             }
+            OutfitKind::Reactor {
+                max_energy: extra_energy,
+                energy_regen: extra_regen,
+            } => {
+                if reactor {
+                    return Err("Only one capacitor or reactor upgrade fits.".into());
+                }
+                reactor = true;
+                stats.max_energy += extra_energy;
+                stats.energy_regen += extra_regen;
+            }
         }
     }
-    if ![stats.max_shields, stats.max_armor, stats.max_fuel]
-        .into_iter()
-        .all(|v| v.is_finite() && v > 0.0)
+    if ![
+        stats.max_shields,
+        stats.max_armor,
+        stats.max_fuel,
+        stats.max_energy,
+        stats.energy_regen,
+    ]
+    .into_iter()
+    .all(|v| v.is_finite() && v > 0.0)
     {
         return Err("Invalid equipped hull capacities.".into());
     }

@@ -50,6 +50,13 @@ pub enum ScenarioStep {
         turn: f32,
         fire: bool,
     },
+    SetAfterburner(bool),
+    SetBrake(bool),
+    SetSecondaryFiring(bool),
+    CycleTarget {
+        #[serde(default)]
+        hostile_only: bool,
+    },
     SetWarp(bool),
     Advance {
         ticks: u32,
@@ -101,6 +108,13 @@ pub enum ScenarioStep {
         #[serde(default)]
         max: Option<f32>,
     },
+    AssertEnergy {
+        #[serde(default)]
+        min: Option<f32>,
+        #[serde(default)]
+        max: Option<f32>,
+    },
+    AssertTargetLocked(bool),
     AssertDocked(Option<String>),
     AssertCredits {
         #[serde(default)]

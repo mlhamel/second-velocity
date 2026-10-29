@@ -16,6 +16,7 @@ fn loadouts_recompute_from_base_and_enforce_category_and_weapon_limits() {
                 "pulse-blaster",
                 "shield-generator-1",
                 "aux-fuel-tank",
+                "capacitor-bank",
             ]),
         )
         .unwrap();
@@ -24,9 +25,15 @@ fn loadouts_recompute_from_base_and_enforce_category_and_weapon_limits() {
             stats.max_shields,
             stats.max_armor,
             stats.max_fuel,
+            stats.max_energy,
+            stats.energy_regen,
             stats.weapon_slots_used
         ),
-        (60.0, 25.0, 170.0, 2)
+        (60.0, 25.0, 170.0, 100.0, 16.0, 2)
+    );
+    assert!(
+        pack.loadout_stats("shuttle", &ids(&["capacitor-bank", "capacitor-bank"]))
+            .is_err()
     );
     assert_eq!(
         pack.loadout_stats("shuttle", &[]).unwrap().max_shields,

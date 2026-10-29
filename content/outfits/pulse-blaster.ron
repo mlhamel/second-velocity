@@ -4,6 +4,6 @@
     description: "A heavier pulse with a longer pause. The warranty excludes everything in front of the barrel.",
     price: 2500,
     mass: 2.0,
-    kind: Weapon((damage: 12.0, cooldown: 0.40, projectile_speed: 480.0, projectile_ttl: 1.3)),
+    kind: Weapon((damage: 12.0, cooldown: 0.40, projectile_speed: 480.0, projectile_ttl: 1.3, energy_cost: Some(6.0))),
     icon: Some("textures/outfits/pulse-blaster.png"),
 )

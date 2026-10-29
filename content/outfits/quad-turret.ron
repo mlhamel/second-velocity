@@ -1,0 +1,16 @@
+(
+    id: "quad-turret",
+    name: "Rotary Defense Turret",
+    description: "A gimbal-mounted quad barrel that tracks whatever your fire-control computer dislikes most.",
+    price: 3400,
+    mass: 3.0,
+    kind: Weapon((
+        damage: 8.0,
+        cooldown: 0.30,
+        projectile_speed: 460.0,
+        projectile_ttl: 1.25,
+        energy_cost: Some(4.5),
+        mount: Turret,
+    )),
+    icon: Some("textures/outfits/quad-turret.png"),
+)

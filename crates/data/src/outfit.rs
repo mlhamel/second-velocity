@@ -18,6 +18,17 @@ pub enum OutfitKind {
     ShieldGenerator { max_shields: f32 },
     FuelTank { fuel: f32 },
     ArmorPlate { armor: f32 },
+    Reactor { max_energy: f32, energy_regen: f32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Deserialize)]
+pub enum WeaponMount {
+    #[default]
+    Fixed,
+    Turret,
+    Missile {
+        turn_rate: f32,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,4 +37,14 @@ pub struct WeaponDef {
     pub cooldown: f32,
     pub projectile_speed: f32,
     pub projectile_ttl: f32,
+    #[serde(default)]
+    pub energy_cost: Option<f32>,
+    #[serde(default)]
+    pub mount: WeaponMount,
+}
+
+impl WeaponDef {
+    pub fn effective_energy_cost(&self) -> f32 {
+        self.energy_cost.unwrap_or(self.damage * 0.35)
+    }
 }
