@@ -10,6 +10,7 @@ use sv_server::gameplay::LAND_RANGE;
 
 use crate::MyNetworkId;
 use crate::chief::ChiefPanelState;
+use crate::menu::AppState;
 
 #[derive(Resource, Default)]
 struct InputState {
@@ -42,8 +43,8 @@ pub struct InputPlugin;
 impl Plugin for InputPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<InputState>()
-            .add_systems(Update, poll_flight_input)
-            .add_systems(Update, poll_action_input);
+            .add_systems(Update, poll_flight_input.run_if(in_state(AppState::InGame)))
+            .add_systems(Update, poll_action_input.run_if(in_state(AppState::InGame)));
     }
 }
 

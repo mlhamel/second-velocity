@@ -18,6 +18,7 @@ cargo test --workspace                              # unit + end-to-end tests
 
 ## Screenshots
 
+![The retro pixel title screen](docs/screenshots/00-title.png)
 ![Flight near Earth](docs/screenshots/01-flight-earth.png)
 ![Skimming Sol's corona at the edge of the heat zone](docs/screenshots/02-sun.png)
 ![Lin Relay station in orbit around Earth](docs/screenshots/03-station.png)
@@ -30,7 +31,7 @@ executables first with `cargo build -p sv-client -p sv-mcp`, then call
 `capture_screenshots` with no arguments on `sv-game`.
 
 The tool opens a separate desktop client, runs the automated tour, and refreshes
-all six images only after the complete tour succeeds. It requires a working
+all seven images only after the complete tour succeeds. It requires a working
 desktop display, has a 180-second timeout, and does not change the MCP game
 session. Errors return the capture log path.
 

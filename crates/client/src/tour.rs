@@ -10,6 +10,7 @@ use sv_protocol::{
 };
 
 use crate::MyNetworkId;
+use crate::menu::{AppState, MenuLayout};
 use crate::screenshots::request_capture;
 
 const STAGE_TICK_LIMIT: u32 = 900;
@@ -39,7 +40,7 @@ struct Tour {
 impl Default for Tour {
     fn default() -> Self {
         Self {
-            stage: TourStage::ApproachEarth,
+            stage: TourStage::Title,
             actioned: false,
             ticks: 0,
         }
@@ -48,6 +49,7 @@ impl Default for Tour {
 
 #[derive(Clone, Copy, PartialEq)]
 enum TourStage {
+    Title,
     ApproachEarth,
     SunFlyby,
     StationFlyby,
@@ -92,12 +94,42 @@ fn run_tour(
     mut commands: Commands,
     mut tour: ResMut<Tour>,
     capture_dir: Res<CaptureDirectory>,
+    menu: Option<Res<MenuLayout>>,
+    mut next_state: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
     ships: TourShips,
     stars: TourStars,
     stations: TourStations,
     planets: Query<(&PlanetTag, &Position)>,
 ) {
+    if tour.stage == TourStage::Title {
+        tour.ticks += 1;
+        if tour.ticks > 600 && menu.is_none() {
+            exit.write(AppExit::Error(
+                std::num::NonZero::<u8>::new(2).expect("two is non-zero"),
+            ));
+            return;
+        }
+        if tour.ticks > 45 && menu.is_some() && !tour.actioned {
+            tour.actioned = true;
+            request_capture(
+                &mut commands,
+                capture_dir
+                    .0
+                    .join("00-title.png")
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        if tour.actioned && tour.ticks > 150 {
+            next_state.set(AppState::InGame);
+            tour.stage = TourStage::ApproachEarth;
+            tour.actioned = false;
+            tour.ticks = 0;
+        }
+        return;
+    }
+
     let Some((_, position, heading, membership, docked, encounter)) = ships
         .iter()
         .find(|(info, _, _, _, _, _)| info.owner == Some(my_id.0))
@@ -319,6 +351,6 @@ fn run_tour(
                 tour.stage = TourStage::Done;
             }
         }
-        TourStage::Done => {}
+        TourStage::Title | TourStage::Done => {}
     }
 }

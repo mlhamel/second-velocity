@@ -3,7 +3,9 @@ use bevy::prelude::*;
 use sv_protocol::{ChiefEncounter, ChiefMood, ShipInfo};
 
 use crate::MyNetworkId;
+use crate::menu::AppState;
 use crate::textures::Textures;
+use crate::ui::UiFont;
 
 const PANEL_WIDTH: f32 = 340.0;
 const PORTRAIT_BASE_SIZE: f32 = 84.0;
@@ -28,7 +30,7 @@ pub struct ChiefPanelState {
 }
 
 #[derive(Resource)]
-struct ChiefPanelLayout {
+pub(crate) struct ChiefPanelLayout {
     root: Entity,
     portrait: Entity,
     title_text: Entity,
@@ -43,18 +45,26 @@ pub struct ChiefPlugin;
 impl Plugin for ChiefPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChiefPanelState>()
-            .add_systems(Startup, spawn_chief_panel)
+            .add_systems(OnEnter(AppState::InGame), spawn_chief_panel)
             .add_systems(
                 Update,
                 (sync_chief_panel, animate_chief_portrait)
                     .chain()
+                    .run_if(in_state(AppState::InGame))
                     .before(crate::input::poll_action_input)
                     .before(crate::shops::ShopSystems),
             );
     }
 }
 
-fn spawn_chief_panel(mut commands: Commands) {
+fn spawn_chief_panel(
+    mut commands: Commands,
+    ui_font: Res<UiFont>,
+    existing: Option<Res<ChiefPanelLayout>>,
+) {
+    if existing.is_some() {
+        return;
+    }
     let mut portrait_id = None;
     let mut title_id = None;
     let mut mood_id = None;
@@ -114,7 +124,8 @@ fn spawn_chief_panel(mut commands: Commands) {
                                 meta.spawn((
                                     Text(String::new()),
                                     TextFont {
-                                        font_size: bevy::text::FontSize::Px(18.0),
+                                        font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                                        font_size: bevy::text::FontSize::Px(16.0),
                                         ..default()
                                     },
                                     TextColor(CYAN),
@@ -125,7 +136,8 @@ fn spawn_chief_panel(mut commands: Commands) {
                                 meta.spawn((
                                     Text(String::new()),
                                     TextFont {
-                                        font_size: bevy::text::FontSize::Px(13.0),
+                                        font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                                        font_size: bevy::text::FontSize::Px(8.0),
                                         ..default()
                                     },
                                     TextColor(AMBER),
@@ -140,7 +152,8 @@ fn spawn_chief_panel(mut commands: Commands) {
                     .spawn((
                         Text(String::new()),
                         TextFont {
-                            font_size: bevy::text::FontSize::Px(14.0),
+                            font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                            font_size: bevy::text::FontSize::Px(8.0),
                             ..default()
                         },
                         TextColor(BODY),
@@ -153,7 +166,8 @@ fn spawn_chief_panel(mut commands: Commands) {
                     .spawn((
                         Text(String::new()),
                         TextFont {
-                            font_size: bevy::text::FontSize::Px(14.0),
+                            font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                            font_size: bevy::text::FontSize::Px(8.0),
                             ..default()
                         },
                         TextColor(CYAN),
@@ -164,9 +178,10 @@ fn spawn_chief_panel(mut commands: Commands) {
             hint_id = Some(
                 panel
                     .spawn((
-                        Text("Esc — dismiss (market keys)   T — reopen".to_owned()),
+                        Text("Esc - dismiss (market keys)   T - reopen".to_owned()),
                         TextFont {
-                            font_size: bevy::text::FontSize::Px(11.0),
+                            font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                            font_size: bevy::text::FontSize::Px(8.0),
                             ..default()
                         },
                         TextColor(DIM),
@@ -197,7 +212,7 @@ fn mood_label(mood: ChiefMood) -> &'static str {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn sync_chief_panel(
+pub(crate) fn sync_chief_panel(
     my_id: Res<MyNetworkId>,
     keys: Res<ButtonInput<KeyCode>>,
     asset_server: Res<AssetServer>,

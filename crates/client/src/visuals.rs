@@ -1,5 +1,6 @@
 use crate::MyNetworkId;
 use crate::input::ClientContent;
+use crate::menu::AppState;
 use crate::textures::Textures;
 use bevy::color::Mix;
 use bevy::prelude::*;
@@ -48,7 +49,7 @@ impl Plugin for VisualsPlugin {
                 sync_meteorite_transforms,
                 sync_target_reticle,
                 parallax,
-                camera_follow,
+                camera_follow.run_if(in_state(AppState::InGame)),
             )
                 .chain(),
         );

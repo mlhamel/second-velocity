@@ -8,7 +8,9 @@ use sv_protocol::{
     PortMarket, SellCommodity, SellOutfit, ShipInfo,
 };
 
-use crate::{MyNetworkId, chief::ChiefPanelState, input::ClientContent};
+use crate::{
+    MyNetworkId, chief::ChiefPanelState, input::ClientContent, menu::AppState, ui::UiFont,
+};
 
 const CYAN: Color = Color::srgb(0.55, 1.0, 0.85);
 const DIM: Color = Color::srgb(0.42, 0.44, 0.5);
@@ -165,7 +167,10 @@ impl Plugin for ShopsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ShopState>().add_systems(
             Update,
-            (update_shops, scroll_shops).chain().in_set(ShopSystems),
+            (update_shops, scroll_shops)
+                .chain()
+                .in_set(ShopSystems)
+                .run_if(in_state(AppState::InGame)),
         );
     }
 }
@@ -265,9 +270,9 @@ fn shop_model(
     if blocked {
         model
             .heading
-            .push_str(" — Esc dismisses the encounter to use shops");
+            .push_str(" - Esc dismisses the encounter to use shops");
     } else {
-        model.heading.push_str(" — Tab / Shift+Tab change service");
+        model.heading.push_str(" - Tab / Shift+Tab change service");
     }
     let ids = equipped
         .map(|outfits| outfits.ids.as_slice())
@@ -277,7 +282,7 @@ fn shop_model(
         let hull_name = owned.map_or(info.def_id.as_str(), |ship| ship.name.as_str());
         let summary = match (equipped, pack.loadout_stats(&info.def_id, ids), owned) {
             (Some(_), Ok(stats), Some(ship)) => format!(
-                "{hull_name} — shields {:.0}  armor {:.0}  fuel {:.0}  weapons {}/{} ({} free)",
+                "{hull_name} - shields {:.0}  armor {:.0}  fuel {:.0}  weapons {}/{} ({} free)",
                 stats.max_shields,
                 stats.max_armor,
                 stats.max_fuel,
@@ -285,8 +290,8 @@ fn shop_model(
                 ship.weapon_slots,
                 ship.weapon_slots.saturating_sub(stats.weapon_slots_used),
             ),
-            (None, _, _) => format!("{hull_name} — awaiting equipped loadout"),
-            (_, Err(error), _) => format!("{hull_name} — {error}"),
+            (None, _, _) => format!("{hull_name} - awaiting equipped loadout"),
+            (_, Err(error), _) => format!("{hull_name} - {error}"),
             _ => hull_name.to_owned(),
         };
         model.row(summary, vec![]);
@@ -325,7 +330,7 @@ fn shop_model(
                 );
                 model.keyboard.push((Some(buy), Some(sell)));
             }
-            model.row("1–5 buy one commodity; Shift+1–5 sell one".into(), vec![]);
+            model.row("1-5 buy one commodity; Shift+1-5 sell one".into(), vec![]);
         }
         ShopTab::Shipyard => {
             let trade_in = owned.map_or(0, |ship| ship.price / 2);
@@ -380,16 +385,16 @@ fn shop_model(
                 let action = reason.is_none().then(|| ShopAction::BuyShip(id.clone()));
                 model.item(
                     ship.sprite.clone().into(),
-                    format!("{}  {} — {} cr list / {price}\n{stats}  cargo {}  slots {}  speed {:.0}  accel {:.0}  turn {:.1}\n{}{}",
+                    format!("{}  {} - {} cr list / {price}\n{stats}  cargo {}  slots {}  speed {:.0}  accel {:.0}  turn {:.1}\n{}{}",
                         index + 1, ship.name, ship.price, ship.cargo, ship.weapon_slots,
                         ship.max_speed, ship.acceleration, ship.turn_rate, ship.description,
-                        reason.as_ref().map(|reason| format!(" — {reason}")).unwrap_or_default()),
+                        reason.as_ref().map(|reason| format!(" - {reason}")).unwrap_or_default()),
                     vec![("Buy hull".into(), action.clone())],
                 );
                 model.keyboard.push((action, None));
             }
             model.row(
-                "1–9 buy hull. Net price includes your hull trade-in; no free factory outfits."
+                "1-9 buy hull. Net price includes your hull trade-in; no free factory outfits."
                     .into(),
                 vec![],
             );
@@ -414,7 +419,7 @@ fn shop_model(
                     pack.outfit(id)
                         .and_then(|outfit| outfit.icon.clone())
                         .into(),
-                    format!("{name} ×{count} — {detail}"),
+                    format!("{name} x{count} - {detail}"),
                     vec![(
                         format!("Sell 1 +{resale} cr"),
                         Some(ShopAction::SellOutfit(id.to_owned())),
@@ -449,7 +454,7 @@ fn shop_model(
                 model.item(
                     outfit.icon.clone().into(),
                     format!(
-                        "{}  {} — {} cr / sell {} cr (equipped {count})\n{} — {}{}",
+                        "{}  {} - {} cr / sell {} cr (equipped {count})\n{} - {}{}",
                         index + 1,
                         outfit.name,
                         outfit.price,
@@ -458,7 +463,7 @@ fn shop_model(
                         outfit.description,
                         reason
                             .as_ref()
-                            .map(|reason| format!(" — {reason}"))
+                            .map(|reason| format!(" - {reason}"))
                             .unwrap_or_default()
                     ),
                     vec![
@@ -468,7 +473,7 @@ fn shop_model(
                 );
                 model.keyboard.push((buy, sell));
             }
-            model.row("1–9 buy + install; Shift+1–9 sell one stock outfit. Server validates all purchases.".into(), vec![]);
+            model.row("1-9 buy + install; Shift+1-9 sell one stock outfit. Server validates all purchases.".into(), vec![]);
         }
     }
     model
@@ -542,6 +547,7 @@ fn update_shops(
     my_id: Res<MyNetworkId>,
     content: Res<ClientContent>,
     asset_server: Res<AssetServer>,
+    ui_font: Res<UiFont>,
     chief: Res<ChiefPanelState>,
     keys: Res<ButtonInput<KeyCode>>,
     mut state: ResMut<ShopState>,
@@ -618,7 +624,7 @@ fn update_shops(
     commands
         .entity(root)
         .despawn_children()
-        .with_children(|parent| render_panel(parent, &model, &asset_server));
+        .with_children(|parent| render_panel(parent, &model, &asset_server, &ui_font));
     *previous = Some(model);
 }
 
@@ -653,11 +659,12 @@ fn scroll_shops(
         .max(0.0);
     scroll.y = (scroll.y + delta).clamp(0.0, max);
 }
-fn text(parent: &mut ChildSpawnerCommands, value: &str, color: Color) {
+fn text(parent: &mut ChildSpawnerCommands, font: &UiFont, value: &str, color: Color) {
     parent.spawn((
         Text(value.to_owned()),
         TextFont {
-            font_size: bevy::text::FontSize::Px(13.0),
+            font: bevy::text::FontSource::Handle(font.0.clone()),
+            font_size: bevy::text::FontSize::Px(8.0),
             ..default()
         },
         TextColor(color),
@@ -670,6 +677,7 @@ fn text(parent: &mut ChildSpawnerCommands, value: &str, color: Color) {
 
 fn button(
     parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
     label: &str,
     action: Option<ShopAction>,
     selected: bool,
@@ -691,7 +699,7 @@ fn button(
     if let Some(action) = action {
         entity.insert(action);
     }
-    entity.with_children(|parent| text(parent, label, if enabled { CYAN } else { DIM }));
+    entity.with_children(|parent| text(parent, font, label, if enabled { CYAN } else { DIM }));
 }
 
 const SLOT: Color = Color::srgb(0.16, 0.19, 0.24);
@@ -711,7 +719,7 @@ fn icon_square(parent: &mut ChildSpawnerCommands, icon: &RowIcon, assets: &Asset
     }
 }
 
-fn row_contents(parent: &mut ChildSpawnerCommands, row: &ShopRow, blocked: bool) {
+fn row_contents(parent: &mut ChildSpawnerCommands, font: &UiFont, row: &ShopRow, blocked: bool) {
     parent
         .spawn(Node {
             flex_direction: FlexDirection::Column,
@@ -720,7 +728,7 @@ fn row_contents(parent: &mut ChildSpawnerCommands, row: &ShopRow, blocked: bool)
             ..default()
         })
         .with_children(|parent| {
-            text(parent, &row.text, BODY);
+            text(parent, font, &row.text, BODY);
             if !row.buttons.is_empty() {
                 parent
                     .spawn(Node {
@@ -731,6 +739,7 @@ fn row_contents(parent: &mut ChildSpawnerCommands, row: &ShopRow, blocked: bool)
                         for (label, action) in &row.buttons {
                             button(
                                 buttons,
+                                font,
                                 label,
                                 if blocked { None } else { action.clone() },
                                 false,
@@ -741,8 +750,13 @@ fn row_contents(parent: &mut ChildSpawnerCommands, row: &ShopRow, blocked: bool)
         });
 }
 
-fn render_panel(parent: &mut ChildSpawnerCommands, model: &ShopModel, assets: &AssetServer) {
-    text(parent, &model.heading, CYAN);
+fn render_panel(
+    parent: &mut ChildSpawnerCommands,
+    model: &ShopModel,
+    assets: &AssetServer,
+    font: &UiFont,
+) {
+    text(parent, font, &model.heading, CYAN);
     parent
         .spawn(Node {
             column_gap: Val::Px(8.0),
@@ -755,10 +769,11 @@ fn render_panel(parent: &mut ChildSpawnerCommands, model: &ShopModel, assets: &A
                 let label = if available {
                     tab.name().to_owned()
                 } else {
-                    format!("{} — unavailable", tab.name())
+                    format!("{} - unavailable", tab.name())
                 };
                 button(
                     tabs,
+                    font,
                     &label,
                     (available && !model.blocked).then_some(ShopAction::Tab(tab)),
                     model.tab == tab,
@@ -767,7 +782,7 @@ fn render_panel(parent: &mut ChildSpawnerCommands, model: &ShopModel, assets: &A
         });
     for row in &model.rows {
         if row.icon == RowIcon::Hidden {
-            row_contents(parent, row, model.blocked);
+            row_contents(parent, font, row, model.blocked);
             continue;
         }
         parent
@@ -779,10 +794,10 @@ fn render_panel(parent: &mut ChildSpawnerCommands, model: &ShopModel, assets: &A
             })
             .with_children(|parent| {
                 icon_square(parent, &row.icon, assets);
-                row_contents(parent, row, model.blocked);
+                row_contents(parent, font, row, model.blocked);
             });
     }
-    text(parent, "Mouse wheel / PgUp / PgDn — scroll", DIM);
+    text(parent, font, "Mouse wheel / PgUp / PgDn - scroll", DIM);
 }
 
 #[cfg(test)]

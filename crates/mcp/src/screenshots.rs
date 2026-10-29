@@ -4,7 +4,8 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-pub const SCREENSHOTS: [&str; 6] = [
+pub const SCREENSHOTS: [&str; 7] = [
+    "00-title.png",
     "01-flight-earth.png",
     "02-sun.png",
     "03-station.png",
@@ -145,7 +146,7 @@ mod tests {
             b"previous capture"
         );
         fs::write(staging.join(SCREENSHOTS[3]), PNG).unwrap();
-        assert_eq!(publish_captures(&staging, &destination).unwrap().len(), 6);
+        assert_eq!(publish_captures(&staging, &destination).unwrap().len(), 7);
         assert_eq!(fs::read(destination.join(SCREENSHOTS[0])).unwrap(), PNG);
         fs::remove_dir_all(root).unwrap();
     }

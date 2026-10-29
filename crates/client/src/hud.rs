@@ -10,6 +10,8 @@ use sv_server::gameplay::LAND_RANGE;
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;
+use crate::menu::AppState;
+use crate::ui::UiFont;
 
 const CYAN: Color = Color::srgb(0.55, 1.0, 0.85);
 const AMBER: Color = Color::srgb(1.0, 0.85, 0.5);
@@ -45,10 +47,10 @@ pub struct HudPlugin;
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Noticeboard>()
-            .add_systems(Startup, spawn_hud)
+            .add_systems(OnEnter(AppState::InGame), spawn_hud)
             .add_observer(on_notice)
             .add_observer(on_player_died)
-            .add_systems(Update, update_hud);
+            .add_systems(Update, update_hud.run_if(in_state(AppState::InGame)));
     }
 }
 
@@ -69,6 +71,7 @@ struct HudEntities {
 
 fn spawn_text(
     parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
     text: impl Into<String>,
     size: f32,
     color: Color,
@@ -77,6 +80,7 @@ fn spawn_text(
         .spawn((
             Text(text.into()),
             TextFont {
+                font: bevy::text::FontSource::Handle(font.0.clone()),
                 font_size: bevy::text::FontSize::Px(size),
                 ..default()
             },
@@ -85,7 +89,12 @@ fn spawn_text(
         .id()
 }
 
-fn spawn_bar(parent: &mut ChildSpawnerCommands, label: &str, fill_color: Color) -> Entity {
+fn spawn_bar(
+    parent: &mut ChildSpawnerCommands,
+    font: &UiFont,
+    label: &str,
+    fill_color: Color,
+) -> Entity {
     let mut fill = None;
     parent
         .spawn(Node {
@@ -96,7 +105,7 @@ fn spawn_bar(parent: &mut ChildSpawnerCommands, label: &str, fill_color: Color) 
             ..default()
         })
         .with_children(|bar| {
-            spawn_text(bar, label.to_owned(), 13.0, DIM);
+            spawn_text(bar, font, label.to_owned(), 8.0, DIM);
             bar.spawn((
                 Node {
                     width: Val::Px(BAR_WIDTH),
@@ -123,7 +132,10 @@ fn spawn_bar(parent: &mut ChildSpawnerCommands, label: &str, fill_color: Color) 
     fill.expect("bar fill must be spawned")
 }
 
-fn spawn_hud(mut commands: Commands) {
+fn spawn_hud(mut commands: Commands, ui_font: Res<UiFont>, existing: Option<Res<HudLayout>>) {
+    if existing.is_some() {
+        return;
+    }
     let mut ids = HudEntities::default();
 
     commands
@@ -136,15 +148,35 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         })
         .with_children(|root| {
-            ids.system_line = Some(spawn_text(root, "", 26.0, CYAN));
-            ids.stats_line = Some(spawn_text(root, "", 16.0, VALUE));
-            ids.shield_fill = Some(spawn_bar(root, "shield", Color::srgb(0.3, 0.8, 1.0)));
-            ids.armor_fill = Some(spawn_bar(root, "armor", Color::srgb(0.95, 0.6, 0.3)));
-            ids.fuel_fill = Some(spawn_bar(root, "fuel", Color::srgb(0.5, 0.9, 0.4)));
-            ids.energy_fill = Some(spawn_bar(root, "energy", Color::srgb(1.0, 0.82, 0.25)));
-            ids.target_line = Some(spawn_text(root, "", 14.0, RED));
-            ids.quest_line = Some(spawn_text(root, "", 14.0, AMBER));
-            ids.prompt_line = Some(spawn_text(root, "", 15.0, CYAN));
+            ids.system_line = Some(spawn_text(root, &ui_font, "", 24.0, CYAN));
+            ids.stats_line = Some(spawn_text(root, &ui_font, "", 16.0, VALUE));
+            ids.shield_fill = Some(spawn_bar(
+                root,
+                &ui_font,
+                "shield",
+                Color::srgb(0.3, 0.8, 1.0),
+            ));
+            ids.armor_fill = Some(spawn_bar(
+                root,
+                &ui_font,
+                "armor",
+                Color::srgb(0.95, 0.6, 0.3),
+            ));
+            ids.fuel_fill = Some(spawn_bar(
+                root,
+                &ui_font,
+                "fuel",
+                Color::srgb(0.5, 0.9, 0.4),
+            ));
+            ids.energy_fill = Some(spawn_bar(
+                root,
+                &ui_font,
+                "energy",
+                Color::srgb(1.0, 0.82, 0.25),
+            ));
+            ids.target_line = Some(spawn_text(root, &ui_font, "", 8.0, RED));
+            ids.quest_line = Some(spawn_text(root, &ui_font, "", 8.0, AMBER));
+            ids.prompt_line = Some(spawn_text(root, &ui_font, "", 8.0, CYAN));
             crate::shops::spawn_panel(root);
         });
 
@@ -156,7 +188,7 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         })
         .with_children(|parent| {
-            ids.notice_line = Some(spawn_text(parent, "", 16.0, AMBER));
+            ids.notice_line = Some(spawn_text(parent, &ui_font, "", 16.0, AMBER));
         });
 
     commands
@@ -167,7 +199,7 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         })
         .with_children(|parent| {
-            ids.banner_line = Some(spawn_text(parent, "", 30.0, RED));
+            ids.banner_line = Some(spawn_text(parent, &ui_font, "", 24.0, RED));
         });
 
     commands
@@ -180,8 +212,9 @@ fn spawn_hud(mut commands: Commands) {
         .with_children(|parent| {
             spawn_text(
                 parent,
-                "W thrust   S brake   Shift boost   A/D turn   Space fire   F missile   T/R target   L dock   U undock   H hail   J warp",
-                13.0,
+                &ui_font,
+                "W thrust   S brake   Shift boost   A/D turn   Space fire   F missile   T/R target   L dock   U undock   H hail   J warp   Esc menu",
+                8.0,
                 DIM,
             );
         });
@@ -251,6 +284,7 @@ fn update_hud(
     layout: Res<HudLayout>,
     board: Res<Noticeboard>,
     content: Res<ClientContent>,
+    mut seen_ship: Local<bool>,
     ships: HudShips,
     target_ships: Query<(&TargetId, &ShipInfo, &Hull)>,
     planets: Query<(&DockableTag, &Position)>,
@@ -282,11 +316,14 @@ fn update_hud(
         set_bar(&mut nodes, layout.armor_fill, 0.0);
         set_bar(&mut nodes, layout.fuel_fill, 0.0);
         set_bar(&mut nodes, layout.energy_fill, 0.0);
-        set_text(&mut texts, layout.banner_line, "SHIP LOST".to_owned());
+        if *seen_ship {
+            set_text(&mut texts, layout.banner_line, "SHIP LOST".to_owned());
+        }
         set_notice(&mut texts, &layout, &board);
         return;
     };
 
+    *seen_ship = true;
     set_text(&mut texts, layout.banner_line, String::new());
     set_notice(&mut texts, &layout, &board);
 
@@ -382,13 +419,13 @@ fn update_hud(
 
     let mut prompts = Vec::new();
     if let Some(docked_at) = docked {
-        prompts.push("U — undock".to_owned());
+        prompts.push("U - undock".to_owned());
         if encounter.is_some() {
             prompts.push(
                 if docked_at.kind == DockableKind::Station {
-                    "T — master"
+                    "T - master"
                 } else {
-                    "T — chief"
+                    "T - chief"
                 }
                 .to_owned(),
             );
@@ -402,7 +439,7 @@ fn update_hud(
             .min_by_key(|(_, planet_position)| position.0.distance(planet_position.0).to_bits());
         if let Some((planet, _)) = candidate {
             prompts.push(format!(
-                "L — {} {}",
+                "L - {} {}",
                 if planet.kind == DockableKind::Station {
                     "dock at"
                 } else {
@@ -411,7 +448,7 @@ fn update_hud(
                 planet.name
             ));
         }
-        prompts.push("J — warp drive".to_owned());
+        prompts.push("J - warp drive".to_owned());
     }
     set_text(&mut texts, layout.prompt_line, prompts.join("   "));
 }

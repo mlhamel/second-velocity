@@ -4,6 +4,8 @@ use sv_protocol::{Position, ShipInfo, SystemControl};
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;
+use crate::menu::AppState;
+use crate::ui::UiFont;
 
 const MAP_WIDTH: f32 = 780.0;
 const MAP_HEIGHT: f32 = 560.0;
@@ -35,9 +37,9 @@ pub struct GalaxyMapPlugin;
 
 impl Plugin for GalaxyMapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_galaxy_map)
-            .add_systems(Update, toggle_galaxy_map)
-            .add_systems(Update, update_galaxy_map);
+        app.add_systems(OnEnter(AppState::InGame), spawn_galaxy_map)
+            .add_systems(Update, toggle_galaxy_map.run_if(in_state(AppState::InGame)))
+            .add_systems(Update, update_galaxy_map.run_if(in_state(AppState::InGame)));
     }
 }
 
@@ -68,7 +70,15 @@ impl MapProjection {
     }
 }
 
-fn spawn_galaxy_map(mut commands: Commands, content: Res<ClientContent>) {
+fn spawn_galaxy_map(
+    mut commands: Commands,
+    content: Res<ClientContent>,
+    ui_font: Res<UiFont>,
+    existing: Query<(), With<GalaxyMapRoot>>,
+) {
+    if !existing.is_empty() {
+        return;
+    }
     let projection = MapProjection::from_content(&content.0);
     let mut map = commands.spawn((
         GalaxyMapRoot,
@@ -103,9 +113,10 @@ fn spawn_galaxy_map(mut commands: Commands, content: Res<ClientContent>) {
                     top: Val::Px(8.0),
                     ..default()
                 },
-                Text("GALAXY — THE SCOREBOARD  [M]".to_owned()),
+                Text("GALAXY - THE SCOREBOARD  [M]".to_owned()),
                 TextFont {
-                    font_size: bevy::text::FontSize::Px(14.0),
+                    font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                    font_size: bevy::text::FontSize::Px(16.0),
                     ..default()
                 },
                 TextColor(TITLE_COLOR),
@@ -139,7 +150,8 @@ fn spawn_galaxy_map(mut commands: Commands, content: Res<ClientContent>) {
                             GalaxyMapSystemLabel,
                             Text(system.name.clone()),
                             TextFont {
-                                font_size: bevy::text::FontSize::Px(11.0),
+                                font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                                font_size: bevy::text::FontSize::Px(8.0),
                                 ..default()
                             },
                             TextColor(NEUTRAL_DOT_COLOR),
@@ -156,7 +168,8 @@ fn spawn_galaxy_map(mut commands: Commands, content: Res<ClientContent>) {
                 GalaxyMapStandings,
                 Text(String::new()),
                 TextFont {
-                    font_size: bevy::text::FontSize::Px(12.0),
+                    font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                    font_size: bevy::text::FontSize::Px(8.0),
                     ..default()
                 },
                 TextColor(Color::srgb(0.75, 0.8, 0.85)),

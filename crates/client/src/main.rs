@@ -2,6 +2,7 @@ mod chief;
 mod galaxymap;
 mod hud;
 mod input;
+mod menu;
 mod minimap;
 mod screenshots;
 mod shops;
@@ -9,6 +10,7 @@ mod sky;
 mod sky_gen;
 mod textures;
 mod tour;
+mod ui;
 mod visuals;
 
 use std::net::SocketAddr;
@@ -104,6 +106,8 @@ fn main() {
     sv_protocol::register(&mut app);
 
     app.add_plugins((
+        ui::UiFontPlugin,
+        menu::MenuPlugin,
         visuals::VisualsPlugin,
         input::InputPlugin,
         hud::HudPlugin,
@@ -114,6 +118,7 @@ fn main() {
         galaxymap::GalaxyMapPlugin,
         sky::SkyPlugin,
     ));
+    app.insert_resource(bevy::camera::ClearColor(Color::srgb(0.02, 0.02, 0.05)));
     app.add_systems(
         Startup,
         (
@@ -171,7 +176,10 @@ fn main() {
             client_id
         }
         None => {
-            app.add_systems(First, step_embedded_server);
+            app.add_systems(
+                First,
+                step_embedded_server.run_if(in_state(menu::AppState::InGame)),
+            );
             let mut server_app =
                 sv_server::build_server_app("content", sv_server::TickMode::Fixed, None)
                     .expect("content pack must load");

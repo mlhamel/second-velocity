@@ -7,6 +7,8 @@ use sv_protocol::{
 
 use crate::MyNetworkId;
 use crate::input::ClientContent;
+use crate::menu::AppState;
+use crate::ui::UiFont;
 
 const MINIMAP_SIZE: f32 = 220.0;
 const MINIMAP_RANGE: f32 = 3000.0;
@@ -30,13 +32,23 @@ pub struct MinimapPlugin;
 
 impl Plugin for MinimapPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_minimap)
-            .add_systems(Update, update_minimap)
-            .add_systems(Update, update_player_marker);
+        app.add_systems(OnEnter(AppState::InGame), spawn_minimap)
+            .add_systems(Update, update_minimap.run_if(in_state(AppState::InGame)))
+            .add_systems(
+                Update,
+                update_player_marker.run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
-fn spawn_minimap(mut commands: Commands) {
+fn spawn_minimap(
+    mut commands: Commands,
+    ui_font: Res<UiFont>,
+    existing: Query<(), With<MinimapRoot>>,
+) {
+    if !existing.is_empty() {
+        return;
+    }
     commands
         .spawn((
             MinimapRoot,
@@ -56,7 +68,8 @@ fn spawn_minimap(mut commands: Commands) {
                 MinimapLabel,
                 Text(String::new()),
                 TextFont {
-                    font_size: bevy::text::FontSize::Px(11.0),
+                    font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                    font_size: bevy::text::FontSize::Px(8.0),
                     ..default()
                 },
                 TextColor(Color::srgb(0.6, 0.75, 0.9)),
