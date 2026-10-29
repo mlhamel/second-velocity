@@ -16,4 +16,6 @@ pub struct Manifest {
     pub scenarios: Vec<String>,
     #[serde(default)]
     pub factions: Vec<String>,
+    #[serde(default)]
+    pub pilots: Vec<String>,
 }

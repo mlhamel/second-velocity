@@ -1,0 +1,14 @@
+(
+    id: "bounty-hunter",
+    name: "Sable Venn",
+    username: "sable-venn",
+    password: "ghost-pilot-bounty-hunter",
+    home_system: "vega",
+    home_port: "vega-station",
+    persona: "Licensed frontier tracker operating out of Vega Station. Takes union board contracts, hauls high-value isotopes and weapons between patrols, breaks off when outgunned, and saves for a Patrol cutter or Terran Frigate.",
+    preferred_commodities: ["isotopes", "weapons", "machinery"],
+    preferred_ships: ["patrol", "terran-frigate"],
+    idle_interval_secs: 40.0,
+    flee_range: 600.0,
+    low_fuel_ratio: 0.25,
+)

@@ -1,0 +1,14 @@
+(
+    id: "cautious-trader",
+    name: "Maren Vos",
+    username: "maren-vos",
+    password: "ghost-pilot-cautious-trader",
+    home_system: "sol",
+    home_port: "earth",
+    persona: "Careful independent bulk broker out of Earth. Buys food and ore only when the margin clears docking fees, avoids pirate lanes at the first radar ping, and saves every credit toward a Terran Hauler.",
+    preferred_commodities: ["food", "machinery", "ore"],
+    preferred_ships: ["terran-hauler", "terran-courier"],
+    idle_interval_secs: 35.0,
+    flee_range: 600.0,
+    low_fuel_ratio: 0.25,
+)

@@ -1,0 +1,14 @@
+(
+    id: "courier",
+    name: "Juno Kade",
+    username: "juno-kade",
+    password: "ghost-pilot-courier",
+    home_system: "sol",
+    home_port: "lin-relay",
+    persona: "Fast-turnaround dispatch runner working the Sol and Alpha Centauri boards. Signs every sealed med-crate and relay parcel that fits the hold, tops off tanks at every berth, and trades up to a Vellari Sprinter.",
+    preferred_commodities: ["medicine", "luxury", "textiles"],
+    preferred_ships: ["terran-courier", "vellari-sprinter"],
+    idle_interval_secs: 30.0,
+    flee_range: 600.0,
+    low_fuel_ratio: 0.25,
+)

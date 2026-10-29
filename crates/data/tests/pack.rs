@@ -18,6 +18,19 @@ fn base_pack_loads() {
     assert_eq!(pack.quests.len(), 12);
     assert_eq!(pack.scenarios.len(), 16);
     assert_eq!(pack.factions.len(), 4);
+    assert_eq!(pack.pilots.len(), 3);
+
+    let trader = pack
+        .pilot("cautious-trader")
+        .expect("cautious-trader pilot exists");
+    assert_eq!(trader.home_system, "sol");
+    assert_eq!(trader.home_port, "earth");
+    let courier = pack.pilot("courier").expect("courier pilot exists");
+    assert_eq!(courier.home_port, "lin-relay");
+    let hunter = pack
+        .pilot("bounty-hunter")
+        .expect("bounty-hunter pilot exists");
+    assert_eq!(hunter.home_system, "vega");
 
     let confederation = pack
         .faction("confederation")

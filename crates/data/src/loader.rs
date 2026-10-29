@@ -8,6 +8,7 @@ use crate::error::{ContentError, validate_asset, validate_ids, validate_referenc
 use crate::faction::FactionDef;
 use crate::manifest::Manifest;
 use crate::outfit::OutfitDef;
+use crate::pilot::PilotDef;
 use crate::quest::{QuestDef, QuestKind};
 use crate::scenario::{ScenarioDef, ScenarioStep};
 use crate::ship::ShipDef;
@@ -23,9 +24,14 @@ pub struct ContentPack {
     pub quests: Vec<QuestDef>,
     pub scenarios: Vec<ScenarioDef>,
     pub factions: Vec<FactionDef>,
+    pub pilots: Vec<PilotDef>,
 }
 
 impl ContentPack {
+    pub fn load_pilot(path: &Path) -> Result<PilotDef, ContentError> {
+        parse_ron(&path.to_path_buf())
+    }
+
     pub fn load_dir(root: &Path) -> Result<Self, ContentError> {
         let manifest: Manifest = parse_ron(&root.join("manifest.ron"))?;
 
@@ -64,6 +70,11 @@ impl ContentPack {
             factions.push(parse_ron(&root.join(path))?);
         }
 
+        let mut pilots: Vec<PilotDef> = Vec::with_capacity(manifest.pilots.len());
+        for path in &manifest.pilots {
+            pilots.push(parse_ron(&root.join(path))?);
+        }
+
         Self::validate(
             &ships,
             &systems,
@@ -72,6 +83,7 @@ impl ContentPack {
             &quests,
             &scenarios,
             &factions,
+            &pilots,
         )?;
         Self::validate_assets(root, &ships, &systems, &outfits, &commodities)?;
 
@@ -84,6 +96,7 @@ impl ContentPack {
             quests,
             scenarios,
             factions,
+            pilots,
         })
     }
 
@@ -179,6 +192,33 @@ impl ContentPack {
         self.factions.iter().find(|faction| faction.id == id)
     }
 
+    pub fn pilot(&self, id: &str) -> Option<&PilotDef> {
+        self.pilots.iter().find(|pilot| pilot.id == id)
+    }
+
+    pub fn validate_pilot(&self, pilot: &PilotDef) -> Result<(), ContentError> {
+        let ship_ids: std::collections::HashSet<_> =
+            self.ships.iter().map(|s| s.id.clone()).collect();
+        let commodity_ids: std::collections::HashSet<_> =
+            self.commodities.iter().map(|c| c.id.clone()).collect();
+        let dockable_refs: std::collections::HashSet<String> = self
+            .systems
+            .iter()
+            .flat_map(|s| {
+                s.planets
+                    .iter()
+                    .map(move |p| format!("{}/{}", s.id, p.id))
+                    .chain(
+                        s.stations
+                            .iter()
+                            .map(move |st| format!("{}/{}", s.id, st.id)),
+                    )
+            })
+            .collect();
+        validate_pilot_def(pilot, &dockable_refs, &commodity_ids, &ship_ids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn validate(
         ships: &[ShipDef],
         systems: &[SystemDef],
@@ -187,6 +227,7 @@ impl ContentPack {
         quests: &[QuestDef],
         scenarios: &[ScenarioDef],
         factions: &[FactionDef],
+        pilots: &[PilotDef],
     ) -> Result<(), ContentError> {
         validate_ids("ship", ships.iter().map(|ship| ship.id.clone()))?;
         validate_ids("system", systems.iter().map(|system| system.id.clone()))?;
@@ -201,6 +242,11 @@ impl ContentPack {
             scenarios.iter().map(|scenario| scenario.id.clone()),
         )?;
         validate_ids("faction", factions.iter().map(|faction| faction.id.clone()))?;
+        validate_ids("pilot", pilots.iter().map(|pilot| pilot.id.clone()))?;
+        validate_ids(
+            "pilot username",
+            pilots.iter().map(|pilot| pilot.username.clone()),
+        )?;
 
         let faction_ids: std::collections::HashSet<_> =
             factions.iter().map(|f| f.id.clone()).collect();
@@ -554,8 +600,46 @@ impl ContentPack {
             }
         }
 
+        for pilot in pilots {
+            validate_pilot_def(pilot, &dockable_refs, &commodity_ids, &ship_ids)?;
+        }
+
         Ok(())
     }
+}
+
+fn validate_pilot_def(
+    pilot: &PilotDef,
+    dockable_refs: &std::collections::HashSet<String>,
+    commodity_ids: &std::collections::HashSet<String>,
+    ship_ids: &std::collections::HashSet<String>,
+) -> Result<(), ContentError> {
+    let valid_config = !pilot.id.trim().is_empty()
+        && !pilot.name.trim().is_empty()
+        && !pilot.username.trim().is_empty()
+        && !pilot.password.trim().is_empty()
+        && !pilot.persona.trim().is_empty()
+        && pilot.idle_interval_secs.is_finite()
+        && pilot.idle_interval_secs >= 15.0
+        && pilot.flee_range.is_finite()
+        && pilot.flee_range > 0.0
+        && pilot.low_fuel_ratio.is_finite()
+        && (0.05..=0.95).contains(&pilot.low_fuel_ratio);
+    if !valid_config {
+        return Err(ContentError::UnknownReference {
+            kind: "pilot config",
+            id: pilot.id.clone(),
+        });
+    }
+    let home_ref = format!("{}/{}", pilot.home_system, pilot.home_port);
+    validate_reference("pilot home port", &home_ref, dockable_refs)?;
+    for comm in &pilot.preferred_commodities {
+        validate_reference("pilot preferred commodity", comm, commodity_ids)?;
+    }
+    for ship in &pilot.preferred_ships {
+        validate_reference("pilot preferred ship", ship, ship_ids)?;
+    }
+    Ok(())
 }
 
 fn validate_station_quest_host(

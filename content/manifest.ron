@@ -104,4 +104,9 @@
         "factions/independent.ron",
         "factions/pirate.ron",
     ],
+    pilots: [
+        "pilots/cautious-trader.ron",
+        "pilots/courier.ron",
+        "pilots/bounty-hunter.ron",
+    ],
 )
