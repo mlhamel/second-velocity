@@ -3082,7 +3082,7 @@ fn roll_chief_encounter(
             portrait: chief.portrait.clone(),
             mood: ChiefMood::Quest,
             text: format!(
-                "{}\n{}\n\n{} — {} (Reward: {} cr)",
+                "{}\n{}\n\n{} - {} (Reward: {} cr)",
                 chief.greeting,
                 chief.quest_text,
                 quest.name,
@@ -3217,7 +3217,7 @@ fn on_request_lift_off(
 fn race_greeting(race: &str) -> &'static str {
     match race {
         "vellari" => "Solar winds favor your sails, traveler.",
-        "korath" => "State your business quickly—our foundry reactors run hot.",
+        "korath" => "State your business quickly - our foundry reactors run hot.",
         "sylph" => "The harmonic currents carry your signal clearly across the void.",
         "auroran" => "Keep your shields steady and your transponder bright, outlander.",
         _ => "Reading you five-by-five on open civilian comms.",
@@ -3291,7 +3291,7 @@ fn on_hail_ship(
             notice(
                 &mut commands,
                 trigger.client_id,
-                "Static and weapons lock—they aren't interested in talking.",
+                "Static and weapons lock - they aren't interested in talking.",
             );
         } else {
             notice(
@@ -3382,7 +3382,7 @@ fn on_hail_ship(
                 portrait,
                 mood: ChiefMood::Offer,
                 text: format!(
-                    "{greeting}\n\n\"Patrol sweeps are active across this sector. Keep your weapons holstered near civilian hulls—here's a reserve fuel transfer.\""
+                    "{greeting}\n\n\"Patrol sweeps are active across this sector. Keep your weapons holstered near civilian hulls - here's a reserve fuel transfer.\""
                 ),
                 options: vec![
                     EncounterOption {
