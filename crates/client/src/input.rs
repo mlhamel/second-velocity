@@ -2,8 +2,9 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use sv_data::ContentPack;
 use sv_protocol::{
-    ChiefEncounter, DockableTag, DockedAt, HailShip, Position, RequestDock, RequestLiftOff,
-    RespondToEncounter, SetFiring, SetThrottle, SetTurn, SetWarp, ShipInfo, SystemMembership,
+    ChiefEncounter, CycleTarget, DockableTag, DockedAt, HailShip, Position, RequestDock,
+    RequestLiftOff, RespondToEncounter, SetAfterburner, SetBrake, SetFiring, SetSecondaryFiring,
+    SetThrottle, SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
 use sv_server::gameplay::LAND_RANGE;
 
@@ -15,6 +16,9 @@ struct InputState {
     throttle: bool,
     turn: i32,
     firing: bool,
+    secondary_firing: bool,
+    afterburner: bool,
+    brake: bool,
     warp: bool,
     docked: Option<bool>,
 }
@@ -24,6 +28,9 @@ enum FlightChange {
     Throttle(f32),
     Turn(f32),
     Firing(bool),
+    SecondaryFiring(bool),
+    Afterburner(bool),
+    Brake(bool),
     Warp(bool),
 }
 
@@ -56,6 +63,11 @@ fn poll_flight_input(
             FlightChange::Throttle(value) => commands.client_trigger(SetThrottle(value)),
             FlightChange::Turn(value) => commands.client_trigger(SetTurn(value)),
             FlightChange::Firing(value) => commands.client_trigger(SetFiring(value)),
+            FlightChange::SecondaryFiring(value) => {
+                commands.client_trigger(SetSecondaryFiring(value))
+            }
+            FlightChange::Afterburner(value) => commands.client_trigger(SetAfterburner(value)),
+            FlightChange::Brake(value) => commands.client_trigger(SetBrake(value)),
             FlightChange::Warp(value) => commands.client_trigger(SetWarp(value)),
         }
     }
@@ -91,6 +103,27 @@ fn flight_changes(
         state.firing = firing;
         debug!("client: SetFiring({firing})");
         changes.push(FlightChange::Firing(firing));
+    }
+
+    let secondary_firing = !docked && keys.pressed(KeyCode::KeyF);
+    if force || secondary_firing != state.secondary_firing {
+        state.secondary_firing = secondary_firing;
+        debug!("client: SetSecondaryFiring({secondary_firing})");
+        changes.push(FlightChange::SecondaryFiring(secondary_firing));
+    }
+
+    let afterburner = !docked && keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    if force || afterburner != state.afterburner {
+        state.afterburner = afterburner;
+        debug!("client: SetAfterburner({afterburner})");
+        changes.push(FlightChange::Afterburner(afterburner));
+    }
+
+    let brake = !docked && keys.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
+    if force || brake != state.brake {
+        state.brake = brake;
+        debug!("client: SetBrake({brake})");
+        changes.push(FlightChange::Brake(brake));
     }
 
     let warp = !docked && keys.pressed(KeyCode::KeyJ);
@@ -158,6 +191,18 @@ pub(crate) fn poll_action_input(
         commands.client_trigger(HailShip);
     }
 
+    if docked.is_none() && encounter.is_none() && keys.just_pressed(KeyCode::KeyT) {
+        info!("client: CycleTarget(hostile_only=false)");
+        commands.client_trigger(CycleTarget {
+            hostile_only: false,
+        });
+    }
+
+    if docked.is_none() && keys.just_pressed(KeyCode::KeyR) {
+        info!("client: CycleTarget(hostile_only=true)");
+        commands.client_trigger(CycleTarget { hostile_only: true });
+    }
+
     let panel_open = chief_panel.is_some_and(|s| s.visible);
     if panel_open && let Some(enc) = encounter {
         for (index, option) in enc.options.iter().enumerate() {
@@ -189,6 +234,9 @@ mod tests {
             FlightChange::Throttle(1.0),
             FlightChange::Turn(-1.0),
             FlightChange::Firing(true),
+            FlightChange::SecondaryFiring(false),
+            FlightChange::Afterburner(false),
+            FlightChange::Brake(false),
             FlightChange::Warp(true),
         ];
         assert_eq!(flight_changes(&mut state, &keys, false), held);
@@ -198,11 +246,25 @@ mod tests {
                 FlightChange::Throttle(0.0),
                 FlightChange::Turn(0.0),
                 FlightChange::Firing(false),
+                FlightChange::SecondaryFiring(false),
+                FlightChange::Afterburner(false),
+                FlightChange::Brake(false),
                 FlightChange::Warp(false),
             ]
         );
         assert!(flight_changes(&mut state, &keys, true).is_empty());
-        assert_eq!(flight_changes(&mut state, &keys, false), held);
+        assert_eq!(
+            flight_changes(&mut state, &keys, false),
+            vec![
+                FlightChange::Throttle(1.0),
+                FlightChange::Turn(-1.0),
+                FlightChange::Firing(true),
+                FlightChange::SecondaryFiring(false),
+                FlightChange::Afterburner(false),
+                FlightChange::Brake(false),
+                FlightChange::Warp(true),
+            ]
+        );
         assert!(flight_changes(&mut state, &keys, false).is_empty());
     }
 
@@ -221,6 +283,9 @@ mod tests {
                 FlightChange::Throttle(0.0),
                 FlightChange::Turn(0.0),
                 FlightChange::Firing(false),
+                FlightChange::SecondaryFiring(false),
+                FlightChange::Afterburner(false),
+                FlightChange::Brake(false),
                 FlightChange::Warp(false),
             ]
         );

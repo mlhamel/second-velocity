@@ -2,8 +2,9 @@ use std::time::{Duration, Instant};
 
 use bevy::prelude::*;
 use sv_protocol::{
-    AccountState, ActiveQuests, ChiefEncounter, DockableKind, DockableTag, DockedAt, Fuel, Hull,
-    Notice, PlayerDied, Position, QuestTarget, ShipInfo, SystemMembership,
+    AccountState, ActiveQuests, ChiefEncounter, DockableKind, DockableTag, DockedAt, Energy, Fuel,
+    Hull, Notice, PlayerDied, Position, QuestTarget, ShipInfo, SystemMembership, TargetId,
+    TargetLock,
 };
 use sv_server::gameplay::LAND_RANGE;
 
@@ -28,6 +29,7 @@ struct Noticeboard {
 struct HudLayout {
     system_line: Entity,
     stats_line: Entity,
+    target_line: Entity,
     quest_line: Entity,
     prompt_line: Entity,
     notice_line: Entity,
@@ -35,6 +37,7 @@ struct HudLayout {
     shield_fill: Entity,
     armor_fill: Entity,
     fuel_fill: Entity,
+    energy_fill: Entity,
 }
 
 pub struct HudPlugin;
@@ -53,6 +56,7 @@ impl Plugin for HudPlugin {
 struct HudEntities {
     system_line: Option<Entity>,
     stats_line: Option<Entity>,
+    target_line: Option<Entity>,
     quest_line: Option<Entity>,
     prompt_line: Option<Entity>,
     notice_line: Option<Entity>,
@@ -60,6 +64,7 @@ struct HudEntities {
     shield_fill: Option<Entity>,
     armor_fill: Option<Entity>,
     fuel_fill: Option<Entity>,
+    energy_fill: Option<Entity>,
 }
 
 fn spawn_text(
@@ -136,6 +141,8 @@ fn spawn_hud(mut commands: Commands) {
             ids.shield_fill = Some(spawn_bar(root, "shield", Color::srgb(0.3, 0.8, 1.0)));
             ids.armor_fill = Some(spawn_bar(root, "armor", Color::srgb(0.95, 0.6, 0.3)));
             ids.fuel_fill = Some(spawn_bar(root, "fuel", Color::srgb(0.5, 0.9, 0.4)));
+            ids.energy_fill = Some(spawn_bar(root, "energy", Color::srgb(1.0, 0.82, 0.25)));
+            ids.target_line = Some(spawn_text(root, "", 14.0, RED));
             ids.quest_line = Some(spawn_text(root, "", 14.0, AMBER));
             ids.prompt_line = Some(spawn_text(root, "", 15.0, CYAN));
             crate::shops::spawn_panel(root);
@@ -173,7 +180,7 @@ fn spawn_hud(mut commands: Commands) {
         .with_children(|parent| {
             spawn_text(
                 parent,
-                "W thrust   A/D turn   Space fire   L land/dock   U undock   H hail   J warp   T host",
+                "W thrust   S brake   Shift boost   A/D turn   Space fire   F missile   T/R target   L dock   U undock   H hail   J warp",
                 13.0,
                 DIM,
             );
@@ -182,6 +189,7 @@ fn spawn_hud(mut commands: Commands) {
     commands.insert_resource(HudLayout {
         system_line: ids.system_line.expect("hud entities must exist"),
         stats_line: ids.stats_line.expect("hud entities must exist"),
+        target_line: ids.target_line.expect("hud entities must exist"),
         quest_line: ids.quest_line.expect("hud entities must exist"),
         prompt_line: ids.prompt_line.expect("hud entities must exist"),
         notice_line: ids.notice_line.expect("hud entities must exist"),
@@ -189,6 +197,7 @@ fn spawn_hud(mut commands: Commands) {
         shield_fill: ids.shield_fill.expect("hud entities must exist"),
         armor_fill: ids.armor_fill.expect("hud entities must exist"),
         fuel_fill: ids.fuel_fill.expect("hud entities must exist"),
+        energy_fill: ids.energy_fill.expect("hud entities must exist"),
     });
 }
 
@@ -211,12 +220,14 @@ type HudShips<'w, 's> = Query<
         &'static ShipInfo,
         &'static Hull,
         &'static Fuel,
+        Option<&'static Energy>,
         &'static AccountState,
         &'static SystemMembership,
         &'static Position,
         Option<&'static DockedAt>,
         Option<&'static ActiveQuests>,
         Option<&'static ChiefEncounter>,
+        Option<&'static TargetLock>,
     ),
 >;
 
@@ -241,21 +252,36 @@ fn update_hud(
     board: Res<Noticeboard>,
     content: Res<ClientContent>,
     ships: HudShips,
+    target_ships: Query<(&TargetId, &ShipInfo, &Hull)>,
     planets: Query<(&DockableTag, &Position)>,
 ) {
     let my = ships
         .iter()
-        .find(|(info, _, _, _, _, _, _, _, _)| info.owner == Some(my_id.0));
+        .find(|(info, _, _, _, _, _, _, _, _, _, _)| info.owner == Some(my_id.0));
 
-    let Some((_, hull, fuel, account, membership, position, docked, active_quests, encounter)) = my
+    let Some((
+        _,
+        hull,
+        fuel,
+        energy,
+        account,
+        membership,
+        position,
+        docked,
+        active_quests,
+        encounter,
+        target_lock,
+    )) = my
     else {
         set_text(&mut texts, layout.system_line, String::new());
         set_text(&mut texts, layout.stats_line, String::new());
+        set_text(&mut texts, layout.target_line, String::new());
         set_text(&mut texts, layout.quest_line, String::new());
         set_text(&mut texts, layout.prompt_line, String::new());
         set_bar(&mut nodes, layout.shield_fill, 0.0);
         set_bar(&mut nodes, layout.armor_fill, 0.0);
         set_bar(&mut nodes, layout.fuel_fill, 0.0);
+        set_bar(&mut nodes, layout.energy_fill, 0.0);
         set_text(&mut texts, layout.banner_line, "SHIP LOST".to_owned());
         set_notice(&mut texts, &layout, &board);
         return;
@@ -288,6 +314,29 @@ fn update_hud(
     );
     set_bar(&mut nodes, layout.armor_fill, hull.armor / hull.max_armor);
     set_bar(&mut nodes, layout.fuel_fill, fuel.current / fuel.max);
+    let energy_fraction = energy.map_or(1.0, |e| if e.max > 0.0 { e.current / e.max } else { 0.0 });
+    set_bar(&mut nodes, layout.energy_fill, energy_fraction);
+
+    let target_text = target_lock
+        .and_then(|lock| lock.0)
+        .and_then(|lock_id| {
+            target_ships
+                .iter()
+                .find(|(tid, _, _)| tid.0 == lock_id)
+                .map(|(_, info, thull)| {
+                    let sh_pct = (thull.shields / thull.max_shields.max(1.0) * 100.0).round();
+                    let ar_pct = (thull.armor / thull.max_armor.max(1.0) * 100.0).round();
+                    format!(
+                        "TARGET: {} ({})   SH {:.0}%   AR {:.0}%",
+                        info.name,
+                        info.kind.as_str(),
+                        sh_pct,
+                        ar_pct
+                    )
+                })
+        })
+        .unwrap_or_default();
+    set_text(&mut texts, layout.target_line, target_text);
 
     let mut quest_text = String::new();
     if let Some(quests) = active_quests {

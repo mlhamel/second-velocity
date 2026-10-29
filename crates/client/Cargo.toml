@@ -38,6 +38,7 @@ bevy = { workspace = true, default-features = false, features = [
 ] }
 bevy_replicon.workspace = true
 bevy_replicon_renet2.workspace = true
+sv-core.workspace = true
 sv-data.workspace = true
 sv-protocol.workspace = true
 sv-server.workspace = true

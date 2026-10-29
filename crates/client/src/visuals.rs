@@ -7,7 +7,8 @@ use bevy_replicon::prelude::*;
 use sv_data::ShipSize;
 use sv_protocol::{
     BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, PlanetTag,
-    Position, Projectile, ShipInfo, ShipKind, StarTag,
+    Position, Projectile, ProjectileKind, ShipInfo, ShipKind, StarTag, TargetId, TargetLock,
+    Velocity,
 };
 
 const FLASH_SECS: f32 = 0.18;
@@ -45,6 +46,7 @@ impl Plugin for VisualsPlugin {
                 sync_black_hole_transforms,
                 sync_projectile_transforms,
                 sync_meteorite_transforms,
+                sync_target_reticle,
                 parallax,
                 camera_follow,
             )
@@ -344,15 +346,23 @@ fn attach_black_hole_visuals(
     }
 }
 
+type AddedProjectiles<'w, 's> =
+    Query<'w, 's, (Entity, &'static Projectile), (Added<Projectile>, With<Remote>)>;
+
 fn attach_projectile_visuals(
     mut commands: Commands,
     textures: Res<Textures>,
-    added: Query<Entity, (Added<Projectile>, With<Remote>)>,
+    added: AddedProjectiles,
 ) {
-    for entity in &added {
+    for (entity, projectile) in &added {
         let mut sprite = Sprite::from_image(textures.glow.clone());
-        sprite.color = Color::srgb(1.9, 1.35, 0.6);
-        sprite.custom_size = Some(Vec2::splat(16.0));
+        let (color, size) = match projectile.kind {
+            ProjectileKind::Bolt => (Color::srgb(1.9, 1.35, 0.6), Vec2::splat(16.0)),
+            ProjectileKind::TurretBolt => (Color::srgb(0.6, 1.75, 2.0), Vec2::splat(15.0)),
+            ProjectileKind::Missile => (Color::srgb(2.2, 0.75, 0.35), Vec2::new(22.0, 12.0)),
+        };
+        sprite.color = color;
+        sprite.custom_size = Some(size);
         commands.entity(entity).insert((ProjectileVisual, sprite));
     }
 }
@@ -496,6 +506,104 @@ fn sync_meteorite_transforms(
     for (position, heading, mut transform) in &mut meteorites {
         transform.translation = position.0.extend(-1.0);
         transform.rotation = Quat::from_rotation_z(heading.0);
+    }
+}
+
+#[derive(Component)]
+struct TargetReticle;
+
+#[derive(Component)]
+struct LeadIndicator;
+
+type ReticleShips<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static ShipInfo,
+        &'static Position,
+        Option<&'static Velocity>,
+        Option<&'static TargetId>,
+        Option<&'static TargetLock>,
+    ),
+>;
+
+type ReticleQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static mut Transform, &'static mut Visibility),
+    (With<TargetReticle>, Without<LeadIndicator>),
+>;
+
+type LeadQuery<'w, 's> = Query<
+    'w,
+    's,
+    (&'static mut Transform, &'static mut Visibility),
+    (With<LeadIndicator>, Without<TargetReticle>),
+>;
+
+fn sync_target_reticle(
+    mut commands: Commands,
+    my_id: Res<MyNetworkId>,
+    textures: Res<Textures>,
+    ships: ReticleShips,
+    mut reticles: ReticleQuery,
+    mut leads: LeadQuery,
+) {
+    let my_ship = ships
+        .iter()
+        .find(|(info, _, _, _, _)| info.owner == Some(my_id.0));
+
+    let locked_target = my_ship
+        .and_then(|(_, my_pos, _, _, lock)| lock.and_then(|l| l.0).map(|id| (my_pos.0, id)))
+        .and_then(|(my_pos, lock_id)| {
+            ships
+                .iter()
+                .find(|(_, _, _, tid, _)| tid.is_some_and(|t| t.0 == lock_id))
+                .map(|(_, pos, vel, _, _)| {
+                    let target_vel = vel.map_or(Vec2::ZERO, |v| v.0);
+                    let lead_pos = sv_core::lead_target_position(my_pos, pos.0, target_vel, 520.0);
+                    (pos.0, lead_pos)
+                })
+        });
+
+    if reticles.is_empty() {
+        let mut reticle_sprite = Sprite::from_image(textures.glow.clone());
+        reticle_sprite.color = Color::srgba(1.0, 0.35, 0.3, 0.45);
+        reticle_sprite.custom_size = Some(Vec2::splat(68.0));
+        commands.spawn((
+            TargetReticle,
+            reticle_sprite,
+            Transform::from_xyz(0.0, 0.0, 1.5),
+            Visibility::Hidden,
+        ));
+
+        let mut lead_sprite = Sprite::from_image(textures.glow.clone());
+        lead_sprite.color = Color::srgba(1.0, 0.85, 0.35, 0.75);
+        lead_sprite.custom_size = Some(Vec2::splat(18.0));
+        commands.spawn((
+            LeadIndicator,
+            lead_sprite,
+            Transform::from_xyz(0.0, 0.0, 1.6),
+            Visibility::Hidden,
+        ));
+        return;
+    }
+
+    for (mut transform, mut vis) in &mut reticles {
+        if let Some((target_pos, _)) = locked_target {
+            transform.translation = target_pos.extend(1.5);
+            *vis = Visibility::Visible;
+        } else {
+            *vis = Visibility::Hidden;
+        }
+    }
+    for (mut transform, mut vis) in &mut leads {
+        if let Some((_, lead_pos)) = locked_target {
+            transform.translation = lead_pos.extend(1.6);
+            *vis = Visibility::Visible;
+        } else {
+            *vis = Visibility::Hidden;
+        }
     }
 }
 

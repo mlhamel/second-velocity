@@ -195,13 +195,20 @@ fn net_hull_price(price: u32, old_price: u32) -> i64 {
 
 fn outfit_effect(kind: &OutfitKind) -> String {
     match kind {
-        OutfitKind::Weapon(weapon) => format!(
-            "weapon: {:.0} damage / {:.2}s, speed {:.0}, range {:.0}; 1 slot",
-            weapon.damage,
-            weapon.cooldown,
-            weapon.projectile_speed,
-            weapon.projectile_speed * weapon.projectile_ttl,
-        ),
+        OutfitKind::Weapon(weapon) => {
+            let mount = match weapon.mount {
+                sv_data::WeaponMount::Fixed => "fixed",
+                sv_data::WeaponMount::Turret => "turret",
+                sv_data::WeaponMount::Missile { .. } => "missile",
+            };
+            format!(
+                "{mount} weapon: {:.0} damage / {:.2}s, speed {:.0}, range {:.0}; 1 slot",
+                weapon.damage,
+                weapon.cooldown,
+                weapon.projectile_speed,
+                weapon.projectile_speed * weapon.projectile_ttl,
+            )
+        }
         OutfitKind::ShieldGenerator { max_shields } => {
             format!("+{max_shields:.0} shield capacity; one generator per hull")
         }
@@ -210,6 +217,14 @@ fn outfit_effect(kind: &OutfitKind) -> String {
         }
         OutfitKind::ArmorPlate { armor } => {
             format!("+{armor:.0} armor capacity; one plate per hull")
+        }
+        OutfitKind::Reactor {
+            max_energy,
+            energy_regen,
+        } => {
+            format!(
+                "+{max_energy:.0} energy capacity, +{energy_regen:.0}/s regen; one reactor per hull"
+            )
         }
     }
 }
