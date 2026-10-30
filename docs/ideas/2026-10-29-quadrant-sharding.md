@@ -32,21 +32,49 @@ runs ALL quadrants locally and is unaffected.
   coordinator. Seed peers + keepalive + full-state quadrant map exchange;
   servers join at any time.
 - **Identity**: per-server accounts + short-lived HMAC **handoff tickets**
-  minted with a fleet-shared key. `IncomingPilot` carries the argon2 hash
-  so the target server adopts the account. Name conflicts across servers
-  are rejected loudly — accepted friends-scale limitation.
+  minted with a fleet-shared key. The target server *leases* a copy of
+  the visiting account for the duration of the visit (`IncomingPilot`
+  carries the argon2 hash); the home server remains the canonical owner.
+  A handoff is refused loudly when the pilot's name collides with a
+  native account on the target — the sender returns the pilot home with
+  a notice. Two leases with the same pilot name but different home
+  quadrants are distinct on the target (keyed by home + name); only a
+  native collision refuses. Accepted friends-scale limitation.
 - **Server-down semantics** (owner, 2026-10-29): a player's anchor is
   their home quadrant. When a server goes down, visiting players it
   hosted automatically return to their home quadrant; players owned by
   the departed quadrant simply disappear — no other server hosts them —
   until it returns, and its edges revert to wrap-around.
+- **Visit lifecycle** (owner, 2026-10-29): death while visiting respawns
+  in the visited quadrant (existing pipeline — death is never free
+  fast-travel home); logging out while visiting camps you there, and
+  re-login lands exactly where you were, against the visited server.
+  Returning home is always an explicit flight. If the visited server is
+  gone at re-login, the client falls back to the home server, which
+  restores the fallback snapshot and treats the visit as ended. The
+  client persists its home server endpoint alongside the camp record,
+  so that fallback is always reachable.
 - **Unserved boundary = wrap-around**: a quadrant behaves like a closed
   world; fly off one edge, reappear on the other (toroidal teleport
   reusing the black-hole teleport path). Edges open to handoffs only when
-  the neighbor quadrant is actually served by another server.
-- **Cross-quadrant travel**: spatial boundary crossing + auto-opening
-  **wormhole black holes** between served quadrant pairs (configurable,
-  Phase 4).
+  the neighbor quadrant is actually served by another server — and not
+  before Phase 3: until then every edge wraps regardless of neighbor
+  status.
+- **Cross-quadrant travel**: crossing a served boundary is the real way
+  between quadrants — fly into an open edge and the pilot is handed to
+  the neighbor server. **Wormhole black holes** (Phase 4) are optional,
+  configurable shortcuts between served pairs; adjacent pairs do not
+  need them — their value is non-adjacent jumps.
+- **No cross-quadrant content** (owner, 2026-10-29): static content stays
+  in its quadrant — quests, commodity price tables, faction-control
+  system lists, and NPC routes never span a boundary; the loader rejects
+  any that does. Cross-quadrant interaction is player-driven only.
+- **Market evolution: per quadrant** (owner, 2026-10-29): each server runs
+  its quadrant's living market (ADR-0015) independently — supply drift,
+  candles, and price news never cross a boundary, and the same commodity
+  may diverge freely across quadrants. The only cross-market channel is
+  physical: players hauling cargo through handoffs. A departed server's
+  market freezes with it and resumes from its storage on return.
 - **Ghost pilots**: constrained to their home quadrant (Phase 5).
 
 ## Why this architecture
@@ -67,12 +95,16 @@ runs ALL quadrants locally and is unaffected.
 - Offline play embeds all quadrants, so there is no second code path
   (ADR-0004's rule holds: one server app, memory or UDP transport).
 - Handoff tickets keep accounts server-local: the sending server vouches
-  for the pilot with a short-lived HMAC ticket; the receiver adopts the
-  account by importing the argon2 hash from `IncomingPilot`. No central
-  account store to operate or compromise.
+  for the pilot with a short-lived HMAC ticket; the receiver leases the
+  pilot for the visit (argon2 hash travels in `IncomingPilot`) while the
+  home server stays canonical owner. No central account store to operate
+  or compromise.
 - Server-down stays simple: no failover hosting, no split-brain — a
-  departed server's players are down with it, and everyone else's
-  visitors fall back home.
+  departed server's players are down with it (permanently, if it never
+  comes back), and everyone else's visitors fall back home.
+- Per-quadrant markets keep each shard's economy self-contained — price
+  history, supply drift, and news are one server's story, and nothing
+  economic ever has to stay in sync across a boundary.
 
 ## Phase plan
 
@@ -87,11 +119,19 @@ queued: groom each at its phase-start session, not in advance.
 - [ ] `SystemDef.quadrant` assignment; every system belongs to exactly one
       quadrant; sol-reach covers today's 15 systems
 - [ ] Coordinate model: galaxy position = quadrant origin + local offset
+      (sol-reach sits at the origin, so today's positions are the local
+      offsets, numerically unchanged)
 - [ ] Planet/station ids globally unique (enforced by the loader)
 - [ ] Hyperlinks stay in-quadrant; cross-quadrant travel is spatial
-      (wrap, handoff, wormholes), never hyperlink jumps
-- [ ] 800px edge clearance: systems keep clear of their quadrant's edges
-      so membership discs never straddle a boundary
+      only — boundary crossings now, optional wormhole shortcuts later
+      — never hyperlink jumps
+- [ ] Content containment: the loader rejects any static reference
+      spanning a quadrant boundary — quest destinations, commodity
+      price-table systems, faction-control lists, NPC routes all stay
+      in-quadrant
+- [ ] Edge clearance: systems sit strictly more than 800px
+      (`SYSTEM_MEMBERSHIP_RADIUS`, `crates/server/src/gameplay.rs:49`)
+      from any quadrant edge, so membership discs never touch a boundary
 - [ ] Galaxy map quadrant overlay in the client
 - [ ] ADR-0021 written in this session
 
@@ -99,34 +139,44 @@ queued: groom each at its phase-start session, not in advance.
 
 - [ ] `--quadrant <id>` CLI flag (sv-server): fleet servers serve exactly
       one quadrant; omitted flag serves all (offline embedded default)
-- [ ] `spawn_world`, membership candidates, `ContractBoard`,
-      `FactionState`, and NPC rosters scoped to the served quadrant (all
-      when no flag is passed)
+- [ ] `spawn_world` (planets, market state, price evolution), membership
+      candidates, `ContractBoard`, `FactionState`, and NPC rosters scoped
+      to the served quadrant (all when no flag is passed)
 - [ ] `PIRATE_SYSTEM` hardcode (`crates/server/src/gameplay.rs:31`) must
       become a per-system content flag — no system or quadrant is
       required to be a pirate system; flagging is per system. The flag
       feeds every consumer: contract-board hazard math
       (`crates/server/src/gameplay/contracts.rs`), the initial pirate
-      spawn, and the pirate respawn timer. A served scope with no
-      flagged pirate systems generates no pirate-hazard jobs and no
-      pirates
+      spawn, and the pirate respawn spawn site (the respawn cooldown
+      itself is a global timer). A served scope with no flagged pirate
+      systems generates no pirate-hazard jobs and no pirates
 - [ ] Scenario + tests for scoping (a two-quadrant pack serves one and
       ignores the other)
 
 ### Phase 2 — Boundaries + wrap
 
 - Boundary detection; wrap-around teleport reusing the black-hole
-  teleport path; edges open to handoff only when the neighbor is served.
+  teleport path. All edges wrap in this phase — served edges become
+  handoffs in Phase 3.
 
 ### Phase 3 — Gossip mesh + cross-server handoff
 
 - Seed peers, keepalive, full-state quadrant map exchange, any-time joins;
   with one server per quadrant the map is a flat quadrant → endpoint
   table.
-- Handoff carries a `PlayerState` blob with `PendingRecoveries`-style
-  failure safety (ADR-0014 pattern) so a dropped handoff never strands a
-  pilot; the home server keeps fallback state for its players who are
-  out visiting.
+- Crossing a served boundary is the real traversal (owner, 2026-10-29):
+  flying into an open edge hands the pilot to the neighbor server.
+  Wormholes (Phase 4) remain optional shortcuts, not the primary road.
+- Handoff leases a `PlayerState` blob to the target server
+  (`PendingRecoveries`-style failure safety, ADR-0014 pattern) so a
+  dropped handoff never strands a pilot; the home server stays canonical
+  owner and keeps fallback state for its players who are out visiting.
+- Visit lifecycle (owner, 2026-10-29): death while visiting respawns in
+  the visited quadrant; logout camps the pilot on the visited server —
+  the lease persists across sessions and re-login lands where they were;
+  returning home is an explicit flight (return handoff). If the visited
+  server is unreachable at re-login, the pilot falls back to the home
+  server and the visit ends.
 - Server-down flow (owner, 2026-10-29): keepalive loss marks the quadrant
   unserved — edges close and wrap resumes; hosted visitors automatically
   return home and are restored there; the departed server's own players
@@ -139,10 +189,12 @@ queued: groom each at its phase-start session, not in advance.
     lockstep — client, server, sv-pilot, sv-log, sv-mcp (PROTOCOL_ID
     lives in sv-protocol; sv-server re-exports it).
 
-### Phase 4 — Wormholes
+### Phase 4 — Wormholes (optional shortcuts)
 
-- Auto-opening wormhole black holes between served quadrant pairs,
-  configurable; reuses black-hole visuals/teleport machinery (ADR-0012).
+- Optional, configurable wormhole black holes between served pairs —
+  adjacent pairs already have their open edge, so the value is
+  non-adjacent jumps. Reuses black-hole visuals/teleport machinery
+  (ADR-0012).
 
 ### Phase 5 — AI scoping + ops
 
@@ -159,16 +211,17 @@ queued: groom each at its phase-start session, not in advance.
   handoff tickets is the accepted friends-scale answer; a real auth story
   (global identity, central or federated accounts) is a future workstream
   the owner flagged 2026-10-29. Revisit before any open/public fleet.
-- Visitor-state freshness: when a visit ends by server death, the home
-  server restores the returning visitor from fallback state — is that the
-  handoff-moment snapshot, or do visits checkpoint home periodically?
-  Determines how much in-visit progress a returned visitor loses.
+- Visitor-state freshness: when a visit ends by server death (or a
+  camper's server never answers re-login), the home server restores the
+  visitor from fallback state — is that the handoff-moment snapshot, or
+  do visits checkpoint home periodically (logout? re-login? timed?).
+  Multi-session camping makes this worse: a long camping visit followed
+  by a visited-server crash would otherwise roll the player back to a
+  stale snapshot. Must be settled before Phase 3's handoff work is
+  called done.
 - Faction metagame (ADR-0017): `FactionState` is per-shard today; does
   control of a system in an unattended quadrant drift for nobody, and
   does anything merge when a neighbor comes online?
-- Economy isolation: each server owns its quadrants' living market
-  (ADR-0015) outright — cross-server arbitrage does not exist. Accept as
-  friends-scale, or gossip price headlines?
 - Galaxy map on a fleet-connected client: show all known quadrants or
   only the served set?
 
@@ -179,8 +232,12 @@ queued: groom each at its phase-start session, not in advance.
   revisit if the fleet outgrows it.
 - Wrap edges are a fiction standing in for "neighbor not served"; players
   who cross an edge with no live neighbor re-enter the same quadrant.
-- A departed server's players are down with it — no failover hosting,
-  accepted for friends-scale ops simplicity.
+- A departed server's players are down with it — and if it never comes
+  back, they are gone for good: their newest state exists only inside
+  transient leases on other servers, and no other server may take over
+  as the canonical home for those players. If that server disappears,
+  you disappear; no failover, no transfer escape hatch — consciously
+  accepted at friends-scale.
 
 ## Precedents the build reuses
 
@@ -192,8 +249,8 @@ queued: groom each at its phase-start session, not in advance.
 - `PROTOCOL_ID` in sv-protocol with sv-server re-export (sv-log's
   move-it-once precedent)
 - The PIRATE_SYSTEM hardcode's three consumers — contract-board hazard
-  math, initial pirate spawn, respawn timer — are what the per-system
-  pirate flag (Phase 1) replaces
+  math, initial pirate spawn, respawn spawn site — are what the
+  per-system pirate flag (Phase 1) replaces
 
 ## Relationship to other roadmaps
 
@@ -215,14 +272,16 @@ queued: groom each at its phase-start session, not in advance.
 - Phase numbering here follows decision 01M64MAYVWP5T8W4KJNW62DGEH
   (six phases, 0-5); the roadmap open-item's "Phases 2-6" phrasing counted
   the same queue differently — this file is the canonical numbering.
-- Server scoping was corrected 2026-10-29 to one-server-one-quadrant
-  (decision 01M64P5YW09TTX04NAN5MQR5DJ): do not re-introduce
-  multi-quadrant serving without a new owner decision.
-- Two further owner refinements of 2026-10-29 are recorded as decisions
-  01M64PN0BC4Y11Q0DAXJW3S463 (pirate systems are a per-system content
-  flag; none is required) and 01M64PN0BWMZ3EXY814V8WP7WT (server-down:
-  visitors return home, owned players go dark until their server
-  returns).
+- Owner refinements of 2026-10-29, all recorded as Director decisions in
+  the quadrants area (do not re-litigate): one-server-one-quadrant
+  (01M64P5YW09TTX04NAN5MQR5DJ), per-system pirate flag
+  (01M64PN0BC4Y11Q0DAXJW3S463), server-down semantics
+  (01M64PN0BWMZ3EXY814V8WP7WT), per-quadrant markets
+  (01M65AXXV8YWH17DYHQZNQ1JZT), boundary-crossing traversal with optional
+  wormholes (01M65BJYYQEACJKQC9X9H16NS3), visit lifecycle — death and
+  logout (01M65BJYZ2T8YRJG6QW1NH06DM, 01M65BJYZAQ4H4WZ8VFQWG172R),
+  connection-anchor loss (01M65BJYZJPGWN57VX41Y7Z3CM), and content
+  containment (01M65BJYZTM4ADPXWENRBR81T4).
 - ADR numbering: 0021 is the next free number. docs/decisions carries a
   pre-existing duplicate-0016 collision; do not renumber unilaterally —
   the owner must bless a renumber or accept the drift.
