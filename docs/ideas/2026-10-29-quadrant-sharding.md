@@ -148,41 +148,41 @@ queued: groom each at its phase-start session, not in advance.
 
 ### Phase 0 — Content schema + validation
 
-- [ ] Content reorg per the locked layout: `content/quadrants/sol-reach/`
+- [x] Content reorg per the locked layout: `content/quadrants/sol-reach/`
       with `systems/`, `quests/`, `pilots/` and a per-quadrant
       `manifest.ron` that IS the `QuadrantDef` (id, name, rectangle
       origin + size); top-level `content/manifest.ron` gains the
       explicit quadrants list; two-level loader in sv-data (global +
       selected quadrant manifests, all when unflagged); delete the
       empty `missions/`
-- [ ] Every system belongs to exactly one quadrant (folder + loader
+- [x] Every system belongs to exactly one quadrant (folder + loader
       check); sol-reach covers today's 15 systems
-- [ ] Coordinate model: galaxy position = quadrant origin + local offset
+- [x] Coordinate model: galaxy position = quadrant origin + local offset
       (sol-reach sits at the origin, so today's positions are the local
       offsets, numerically unchanged)
-- [ ] Planet/station ids globally unique (enforced by the loader)
-- [ ] Hyperlinks stay in-quadrant; cross-quadrant travel is spatial
+- [x] Planet/station ids globally unique (enforced by the loader)
+- [x] Hyperlinks stay in-quadrant; cross-quadrant travel is spatial
       only — boundary crossings now, optional wormhole shortcuts later
       — never hyperlink jumps
-- [ ] Content containment: the loader rejects any static reference
+- [x] Content containment: the loader rejects any static reference
       spanning a quadrant boundary — quest destinations, commodity
       price-table systems, faction-control lists, NPC routes all stay
       in-quadrant
-- [ ] Edge clearance: systems sit strictly more than 800px
+- [x] Edge clearance: systems sit strictly more than 800px
       (`SYSTEM_MEMBERSHIP_RADIUS`, `crates/server/src/gameplay.rs:49`)
       from any quadrant edge, so membership discs never touch a boundary
-- [ ] Galaxy map quadrant overlay in the client
-- [ ] ADR-0021 written in this session
+- [x] Galaxy map quadrant overlay in the client
+- [x] ADR-0021 written in this session
 
 ### Phase 1 — One server, one quadrant
 
-- [ ] `--quadrant <id>` CLI flag (sv-server): fleet servers serve exactly
+- [x] `--quadrant <id>` CLI flag (sv-server): fleet servers serve exactly
       one quadrant; omitted flag serves all (offline embedded default)
-- [ ] `spawn_world` (planets, market state, price evolution), membership
+- [x] `spawn_world` (planets, market state, price evolution), membership
       candidates, `ContractBoard`, `FactionState`, and NPC rosters scoped
       to the served quadrant (all when no flag is passed); scenarios
       filtered to those resolvable in the served set
-- [ ] `PIRATE_SYSTEM` hardcode (`crates/server/src/gameplay.rs:31`) must
+- [x] `PIRATE_SYSTEM` hardcode (`crates/server/src/gameplay.rs:31`) must
       become a per-system content flag — no system or quadrant is
       required to be a pirate system; flagging is per system. The flag
       feeds every consumer: contract-board hazard math
@@ -190,7 +190,7 @@ queued: groom each at its phase-start session, not in advance.
       spawn, and the pirate respawn spawn site (the respawn cooldown
       itself is a global timer). A served scope with no flagged pirate
       systems generates no pirate-hazard jobs and no pirates
-- [ ] Scenario + tests for scoping (a two-quadrant pack serves one and
+- [x] Scenario + tests for scoping (a two-quadrant pack serves one and
       ignores the other)
 
 ### Phase 2 — Boundaries + wrap
