@@ -5,17 +5,23 @@ use sv_data::{ContentError, ContentPack};
 
 fn fixture(name: &str, hole: &str, steps: &str) -> Result<ContentPack, ContentError> {
     let root = std::env::temp_dir().join(format!("sv-black-hole-{name}-{}", std::process::id()));
-    fs::create_dir_all(&root).unwrap();
+    let q_dir = root.join("quadrants/q");
+    fs::create_dir_all(&q_dir).unwrap();
     fs::write(
         root.join("manifest.ron"),
-        r#"(id:"test",name:"Test",version:(0,1,0),ships:[],systems:["a.ron","b.ron"],outfits:[],scenarios:["s.ron"])"#,
+        r#"(id:"test",name:"Test",version:(0,1,0),quadrants:["quadrants/q/manifest.ron"],ships:[],outfits:[],scenarios:["s.ron"])"#,
     ).unwrap();
     fs::write(
-        root.join("a.ron"),
+        q_dir.join("manifest.ron"),
+        r#"(id:"q",name:"Q",origin:(0.0,0.0),size:(10000.0,10000.0),systems:["a.ron","b.ron"])"#,
+    )
+    .unwrap();
+    fs::write(
+        q_dir.join("a.ron"),
         format!(r#"(id:"a",name:"A",description:"",government:"independent",position:(0.0,0.0),links:[],planets:[],{hole})"#),
     ).unwrap();
     fs::write(
-        root.join("b.ron"),
+        q_dir.join("b.ron"),
         r#"(id:"b",name:"B",description:"",government:"independent",position:(3000.0,0.0),links:[],planets:[])"#,
     ).unwrap();
     fs::write(

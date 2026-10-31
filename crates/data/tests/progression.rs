@@ -92,10 +92,16 @@ fn fixture(
     step: &str,
 ) -> Result<ContentPack, ContentError> {
     let dir = std::env::temp_dir().join(format!("sv-progression-{name}-{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
-    fs::write(dir.join("manifest.ron"), r#"(id:"t",name:"T",version:(0,1,0),ships:["ship.ron"],systems:["system.ron"],outfits:["outfit.ron"],scenarios:["scenario.ron"])"#).unwrap();
+    let q_dir = dir.join("quadrants/q");
+    fs::create_dir_all(&q_dir).unwrap();
+    fs::write(dir.join("manifest.ron"), r#"(id:"t",name:"T",version:(0,1,0),quadrants:["quadrants/q/manifest.ron"],ships:["ship.ron"],outfits:["outfit.ron"],scenarios:["scenario.ron"])"#).unwrap();
+    fs::write(
+        q_dir.join("manifest.ron"),
+        r#"(id:"q",name:"Q",origin:(0.0,0.0),size:(10000.0,10000.0),systems:["system.ron"])"#,
+    )
+    .unwrap();
     fs::write(dir.join("ship.ron"), format!(r#"(id:"s",name:"S",description:"",price:1,mass:1.0,turn_rate:1.0,acceleration:1.0,max_speed:1.0,max_shields:1.0,max_armor:1.0,fuel:1,cargo:1,weapon_slots:1,default_outfits:[{defaults}])"#)).unwrap();
-    fs::write(dir.join("system.ron"),format!(r#"(id:"sys",name:"Sys",description:"",government:"independent",position:(0.0,0.0),links:[],planets:[(id:"p",name:"P",description:"",commodities:[],{services})])"#)).unwrap();
+    fs::write(q_dir.join("system.ron"),format!(r#"(id:"sys",name:"Sys",description:"",government:"independent",position:(0.0,0.0),links:[],planets:[(id:"p",name:"P",description:"",commodities:[],{services})])"#)).unwrap();
     fs::write(
         dir.join("outfit.ron"),
         format!(r#"(id:"o",name:"O",description:"",price:{price},mass:1.0,kind:{kind})"#),

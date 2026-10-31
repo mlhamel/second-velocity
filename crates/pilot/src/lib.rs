@@ -164,17 +164,7 @@ pub fn build_pilot_app(
     app.insert_resource(transport);
 
     let hazards = collect_hazards(&pack, 40.0);
-    let worker_pack = ContentPack {
-        manifest: pack.manifest.clone(),
-        ships: pack.ships.clone(),
-        systems: pack.systems.clone(),
-        outfits: pack.outfits.clone(),
-        commodities: pack.commodities.clone(),
-        quests: pack.quests.clone(),
-        scenarios: pack.scenarios.clone(),
-        factions: pack.factions.clone(),
-        pilots: pack.pilots.clone(),
-    };
+    let worker_pack = pack.clone();
     let worker = DecisionWorker::spawn(
         brain,
         config.pilot.clone(),

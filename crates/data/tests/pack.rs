@@ -11,12 +11,18 @@ fn base_pack_loads() {
     let pack = ContentPack::load_dir(&root).expect("base pack must load");
 
     assert_eq!(pack.manifest.id, "sv-base");
+    assert_eq!(pack.quadrants.len(), 1);
+    assert_eq!(pack.quadrants[0].id, "sol-reach");
     assert_eq!(pack.ships.len(), 25);
     assert_eq!(pack.systems.len(), 15);
+    assert!(
+        pack.systems.iter().all(|sys| sys.quadrant == "sol-reach"),
+        "every sol-reach system must be tagged with its quadrant"
+    );
     assert_eq!(pack.outfits.len(), 8);
     assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 16);
+    assert_eq!(pack.scenarios.len(), 17);
     assert_eq!(pack.factions.len(), 4);
     assert_eq!(pack.pilots.len(), 3);
 
@@ -115,8 +121,10 @@ fn base_pack_loads() {
     let alpha = pack
         .system("alpha-centauri")
         .expect("alpha centauri exists");
+    assert!(alpha.pirate);
     assert!(alpha.links.contains(&"sol".to_owned()));
     assert!(alpha.planets[0].chief.is_some());
+    assert!(!pack.system("sol").unwrap().pirate);
 
     let relief = pack
         .quest("newhaven-relief")
@@ -207,7 +215,7 @@ fn duplicate_ids_are_rejected() {
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron", "b.ron"], systems: [], outfits: [] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron", "b.ron"], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(dir.join("a.ron"), DUPLICATE_SHIP).expect("ship must be writable");
@@ -228,7 +236,7 @@ fn unknown_outfit_reference_is_rejected() {
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron"], systems: [], outfits: [] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron"], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
@@ -252,7 +260,7 @@ fn missing_sprite_asset_is_rejected() {
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron"], systems: [], outfits: [] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["a.ron"], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
@@ -279,7 +287,7 @@ fn missing_outfit_icon_is_rejected() {
     fs::create_dir_all(&dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: [], outfits: ["a.ron"] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], outfits: ["a.ron"] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
@@ -307,11 +315,6 @@ fn invalid_asset_paths_are_rejected() {
     let content = dir.join("content");
     fs::create_dir_all(&assets).expect("dirs must be creatable");
     fs::create_dir_all(&content).expect("dirs must be creatable");
-    fs::write(
-        content.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: ["a.ron"], outfits: [] )"#,
-    )
-    .expect("manifest must be writable");
 
     for (sprite, kind) in [
         ("textures/../../secret.png", "asset (invalid path)"),
@@ -327,7 +330,7 @@ fn invalid_asset_paths_are_rejected() {
         .expect("ship must be writable");
         fs::write(
             content.join("manifest.ron"),
-            r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["ship.ron"], systems: [], outfits: [] )"#,
+            r#"( id: "t", name: "t", version: (0, 1, 0), ships: ["ship.ron"], outfits: [] )"#,
         )
         .expect("manifest must be writable");
 
@@ -350,19 +353,25 @@ fn invalid_asset_paths_are_rejected() {
 #[test]
 fn non_reciprocal_links_are_rejected() {
     let dir = std::env::temp_dir().join(format!("sv-data-link-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).expect("temp dir must be creatable");
+    let q_dir = dir.join("quadrants/q");
+    fs::create_dir_all(&q_dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: ["a.ron", "b.ron"], outfits: [] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), quadrants: ["quadrants/q/manifest.ron"], ships: [], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
-        dir.join("a.ron"),
+        q_dir.join("manifest.ron"),
+        r#"( id: "q", name: "Q", origin: (0.0, 0.0), size: (10000.0, 10000.0), systems: ["a.ron", "b.ron"] )"#,
+    )
+    .expect("quadrant manifest must be writable");
+    fs::write(
+        q_dir.join("a.ron"),
         r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: ["b"], planets: [] )"#,
     )
     .expect("system must be writable");
     fs::write(
-        dir.join("b.ron"),
+        q_dir.join("b.ron"),
         r#"( id: "b", name: "B", government: "independent", description: "", position: (100.0, 0.0), links: [], planets: [] )"#,
     )
     .expect("system must be writable");
@@ -385,19 +394,25 @@ fn non_reciprocal_links_are_rejected() {
 #[test]
 fn unknown_quest_planet_reference_is_rejected() {
     let dir = std::env::temp_dir().join(format!("sv-data-quest-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).expect("temp dir must be creatable");
+    let q_dir = dir.join("quadrants/q");
+    fs::create_dir_all(&q_dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: ["a.ron"], outfits: [], quests: ["q.ron"] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), quadrants: ["quadrants/q/manifest.ron"], ships: [], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
-        dir.join("a.ron"),
+        q_dir.join("manifest.ron"),
+        r#"( id: "q", name: "Q", origin: (0.0, 0.0), size: (10000.0, 10000.0), systems: ["a.ron"], quests: ["q.ron"] )"#,
+    )
+    .expect("quadrant manifest must be writable");
+    fs::write(
+        q_dir.join("a.ron"),
         r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "p", name: "P", description: "", commodities: [] )] )"#,
     )
     .expect("system must be writable");
     fs::write(
-        dir.join("q.ron"),
+        q_dir.join("q.ron"),
         r#"( id: "q1", name: "Q", giver: ("a", "p"), kind: Delivery(commodity: "food", qty: 1, destination: ("a", "nowhere")), reward_credits: 100, description: "" )"#,
     )
     .expect("quest must be writable");
@@ -420,14 +435,20 @@ fn unknown_quest_planet_reference_is_rejected() {
 #[test]
 fn missing_chief_portrait_is_rejected() {
     let dir = std::env::temp_dir().join(format!("sv-data-chief-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).expect("temp dir must be creatable");
+    let q_dir = dir.join("quadrants/q");
+    fs::create_dir_all(&q_dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: ["a.ron"], outfits: [] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), quadrants: ["quadrants/q/manifest.ron"], ships: [], outfits: [] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
-        dir.join("a.ron"),
+        q_dir.join("manifest.ron"),
+        r#"( id: "q", name: "Q", origin: (0.0, 0.0), size: (10000.0, 10000.0), systems: ["a.ron"] )"#,
+    )
+    .expect("quadrant manifest must be writable");
+    fs::write(
+        q_dir.join("a.ron"),
         r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "p", name: "P", description: "", chief: Some(( name: "Chief", portrait: Some("textures/chiefs/ghost.png"), greeting: "", offer_text: "", tribute_text: "", quest_text: "" )), commodities: [] )] )"#,
     )
     .expect("system must be writable");
@@ -447,14 +468,20 @@ fn missing_chief_portrait_is_rejected() {
 #[test]
 fn unknown_scenario_reference_is_rejected() {
     let dir = std::env::temp_dir().join(format!("sv-data-scenario-test-{}", std::process::id()));
-    fs::create_dir_all(&dir).expect("temp dir must be creatable");
+    let q_dir = dir.join("quadrants/q");
+    fs::create_dir_all(&q_dir).expect("temp dir must be creatable");
     fs::write(
         dir.join("manifest.ron"),
-        r#"( id: "t", name: "t", version: (0, 1, 0), ships: [], systems: ["a.ron"], outfits: [], scenarios: ["s.ron"] )"#,
+        r#"( id: "t", name: "t", version: (0, 1, 0), quadrants: ["quadrants/q/manifest.ron"], ships: [], outfits: [], scenarios: ["s.ron"] )"#,
     )
     .expect("manifest must be writable");
     fs::write(
-        dir.join("a.ron"),
+        q_dir.join("manifest.ron"),
+        r#"( id: "q", name: "Q", origin: (0.0, 0.0), size: (10000.0, 10000.0), systems: ["a.ron"] )"#,
+    )
+    .expect("quadrant manifest must be writable");
+    fs::write(
+        q_dir.join("a.ron"),
         r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "p", name: "P", description: "", commodities: [] )] )"#,
     )
     .expect("system must be writable");
@@ -477,4 +504,159 @@ fn unknown_scenario_reference_is_rejected() {
     );
 
     fs::remove_dir_all(&dir).expect("temp dir must be removable");
+}
+
+#[test]
+fn quadrant_edge_clearance_overlap_and_containment_are_enforced() {
+    let dir = std::env::temp_dir().join(format!("sv-data-quadrant-test-{}", std::process::id()));
+    let q1 = dir.join("quadrants/alpha");
+    let q2 = dir.join("quadrants/beta");
+    fs::create_dir_all(&q1).unwrap();
+    fs::create_dir_all(&q2).unwrap();
+
+    fs::write(
+        dir.join("manifest.ron"),
+        r#"( id: "t", name: "t", version: (0, 1, 0), quadrants: ["quadrants/alpha/manifest.ron", "quadrants/beta/manifest.ron"], ships: [], outfits: [] )"#,
+    )
+    .unwrap();
+
+    // 1. Overlapping quadrant rectangles are rejected.
+    fs::write(
+        q1.join("manifest.ron"),
+        r#"( id: "alpha", name: "Alpha", origin: (0.0, 0.0), size: (4000.0, 4000.0), systems: [] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q2.join("manifest.ron"),
+        r#"( id: "beta", name: "Beta", origin: (3000.0, 0.0), size: (4000.0, 4000.0), systems: [] )"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        ContentPack::load_dir(&dir),
+        Err(ContentError::UnknownReference {
+            kind: "quadrant overlap",
+            ..
+        })
+    ));
+
+    // Fix q2 to sit adjacent (non-overlapping): [2000..6000] vs [-2000..2000].
+    fs::write(
+        q2.join("manifest.ron"),
+        r#"( id: "beta", name: "Beta", origin: (4000.0, 0.0), size: (4000.0, 4000.0), systems: ["b.ron"] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q1.join("manifest.ron"),
+        r#"( id: "alpha", name: "Alpha", origin: (0.0, 0.0), size: (4000.0, 4000.0), systems: ["a.ron"] )"#,
+    )
+    .unwrap();
+
+    // 2. System closer than 800px to quadrant edge is rejected (max_x = 2000, pos = 1200 -> clearance = 800, not strictly > 800).
+    fs::write(
+        q1.join("a.ron"),
+        r#"( id: "a", name: "A", government: "independent", description: "", position: (1200.0, 0.0), links: [], planets: [( id: "pa", name: "PA", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q2.join("b.ron"),
+        r#"( id: "b", name: "B", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "pb", name: "PB", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        ContentPack::load_dir(&dir),
+        Err(ContentError::UnknownReference {
+            kind: "quadrant edge clearance",
+            ..
+        })
+    ));
+
+    // 3. Duplicate planet/station ID across different quadrants is rejected.
+    fs::write(
+        q1.join("a.ron"),
+        r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "shared-port", name: "PA", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q2.join("b.ron"),
+        r#"( id: "b", name: "B", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "shared-port", name: "PB", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        ContentPack::load_dir(&dir),
+        Err(ContentError::DuplicateId {
+            kind: "docking location",
+            ..
+        })
+    ));
+
+    // 4. Cross-quadrant reciprocal hyperlinks are rejected.
+    fs::write(
+        q1.join("a.ron"),
+        r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: ["b"], planets: [( id: "pa", name: "PA", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q2.join("b.ron"),
+        r#"( id: "b", name: "B", government: "independent", description: "", position: (0.0, 0.0), links: ["a"], planets: [( id: "pb", name: "PB", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        ContentPack::load_dir(&dir),
+        Err(ContentError::UnknownReference {
+            kind: "cross-quadrant link",
+            ..
+        })
+    ));
+
+    // 5. Cross-quadrant quest destination is rejected.
+    fs::write(
+        q1.join("a.ron"),
+        r#"( id: "a", name: "A", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "pa", name: "PA", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q2.join("b.ron"),
+        r#"( id: "b", name: "B", government: "independent", description: "", position: (0.0, 0.0), links: [], planets: [( id: "pb", name: "PB", description: "", commodities: [] )] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q1.join("manifest.ron"),
+        r#"( id: "alpha", name: "Alpha", origin: (0.0, 0.0), size: (4000.0, 4000.0), systems: ["a.ron"], quests: ["q.ron"] )"#,
+    )
+    .unwrap();
+    fs::write(
+        q1.join("q.ron"),
+        r#"( id: "q1", name: "Cross", giver: ("a", "pa"), kind: Delivery(commodity: "food", qty: 1, destination: ("b", "pb")), reward_credits: 100, description: "" )"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        ContentPack::load_dir(&dir),
+        Err(ContentError::UnknownReference {
+            kind: "cross-quadrant quest",
+            ..
+        })
+    ));
+
+    // 6. Valid two-quadrant pack loads all quadrants when unflagged, or a single quadrant with coordinate offset when scoped.
+    fs::write(
+        q1.join("q.ron"),
+        r#"( id: "q1", name: "Local", giver: ("a", "pa"), kind: Delivery(commodity: "food", qty: 1, destination: ("a", "pa")), reward_credits: 100, description: "" )"#,
+    )
+    .unwrap();
+    let full = ContentPack::load_dir(&dir).expect("valid two-quadrant pack loads");
+    assert_eq!(full.quadrants.len(), 2);
+    assert_eq!(full.systems.len(), 2);
+    assert_eq!(full.system("a").unwrap().position, (0.0, 0.0));
+    assert_eq!(full.system("b").unwrap().position, (4000.0, 0.0));
+
+    let beta_only = ContentPack::load_dir_scoped(&dir, Some("beta"))
+        .expect("scoped load for beta must succeed");
+    assert_eq!(beta_only.quadrants.len(), 1);
+    assert_eq!(beta_only.quadrants[0].id, "beta");
+    assert_eq!(beta_only.systems.len(), 1);
+    assert_eq!(beta_only.systems[0].id, "b");
+    assert_eq!(beta_only.systems[0].position, (4000.0, 0.0));
+    assert!(beta_only.quests.is_empty());
+
+    fs::remove_dir_all(&dir).unwrap();
 }

@@ -10,7 +10,11 @@ pub struct SystemDef {
     pub name: String,
     pub description: String,
     pub government: String,
+    #[serde(default)]
+    pub quadrant: String,
     pub position: (f32, f32),
+    #[serde(default)]
+    pub pirate: bool,
     pub links: Vec<String>,
     pub planets: Vec<PlanetDef>,
     #[serde(default)]

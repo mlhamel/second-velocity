@@ -15,7 +15,7 @@ use sv_server::{
 #[test]
 fn stub_brain_pilot_completes_trade_and_delivery_quest_loop() {
     let content_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../content");
-    let persona_path = content_root.join("pilots/cautious-trader.ron");
+    let persona_path = content_root.join("quadrants/sol-reach/pilots/cautious-trader.ron");
     let storage_path =
         std::env::temp_dir().join(format!("sv-pilot-test-{}.db", std::process::id()));
     let _ = std::fs::remove_file(&storage_path);

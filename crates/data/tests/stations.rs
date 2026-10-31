@@ -20,16 +20,20 @@ fn fixture_at(
     origin: &str,
 ) -> Result<ContentPack, ContentError> {
     let root = std::env::temp_dir().join(format!("sv-stations-{name}-{}", std::process::id()));
-    fs::create_dir_all(&root).unwrap();
+    let q_dir = root.join("quadrants/q");
+    fs::create_dir_all(&q_dir).unwrap();
     let quests = if quest.is_some() {
         r#"["q.ron"]"#
     } else {
         "[]"
     };
-    fs::write(root.join("manifest.ron"), format!(
-        r#"(id:"t",name:"T",version:(0,1,0),ships:[],systems:["s.ron"],outfits:[],quests:{quests},scenarios:["test.ron"])"#
+    fs::write(root.join("manifest.ron"),
+        r#"(id:"t",name:"T",version:(0,1,0),quadrants:["quadrants/q/manifest.ron"],ships:[],outfits:[],scenarios:["test.ron"])"#
+    ).unwrap();
+    fs::write(q_dir.join("manifest.ron"), format!(
+        r#"(id:"q",name:"Q",origin:(0.0,0.0),size:(10000.0,10000.0),systems:["s.ron"],quests:{quests})"#
     )).unwrap();
-    fs::write(root.join("s.ron"), format!(
+    fs::write(q_dir.join("s.ron"), format!(
         r#"(id:"s",name:"S",description:"",government:"independent",position:{origin},links:[],planets:[(id:"p",name:"P",description:"",commodities:[])],{stations})"#
     )).unwrap();
     fs::write(
@@ -38,7 +42,7 @@ fn fixture_at(
     )
     .unwrap();
     if let Some(quest) = quest {
-        fs::write(root.join("q.ron"), quest).unwrap();
+        fs::write(q_dir.join("q.ron"), quest).unwrap();
     }
     let result = ContentPack::load_dir(&root);
     fs::remove_dir_all(root).unwrap();

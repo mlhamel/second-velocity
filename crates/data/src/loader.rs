@@ -1,5 +1,6 @@
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 
@@ -9,14 +10,16 @@ use crate::faction::FactionDef;
 use crate::manifest::Manifest;
 use crate::outfit::OutfitDef;
 use crate::pilot::PilotDef;
+use crate::quadrant::{QuadrantDef, SYSTEM_EDGE_CLEARANCE};
 use crate::quest::{QuestDef, QuestKind};
 use crate::scenario::{ScenarioDef, ScenarioStep};
 use crate::ship::ShipDef;
 use crate::system::{DockableDef, PLANET_RADIUS, StationPlacement, SystemDef};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ContentPack {
     pub manifest: Manifest,
+    pub quadrants: Vec<QuadrantDef>,
     pub ships: Vec<ShipDef>,
     pub systems: Vec<SystemDef>,
     pub outfits: Vec<OutfitDef>,
@@ -33,16 +36,114 @@ impl ContentPack {
     }
 
     pub fn load_dir(root: &Path) -> Result<Self, ContentError> {
+        Self::load_dir_scoped(root, None)
+    }
+
+    pub fn load_dir_scoped(root: &Path, quadrant_id: Option<&str>) -> Result<Self, ContentError> {
         let manifest: Manifest = parse_ron(&root.join("manifest.ron"))?;
+
+        let mut all_quadrants: Vec<(PathBuf, QuadrantDef)> =
+            Vec::with_capacity(manifest.quadrants.len());
+        for rel_path in &manifest.quadrants {
+            if !is_normal_relative_path(rel_path) {
+                return Err(ContentError::UnknownReference {
+                    kind: "quadrant path",
+                    id: rel_path.clone(),
+                });
+            }
+            let full_path = root.join(rel_path);
+            let q_dir = full_path
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| root.to_path_buf());
+            let quadrant: QuadrantDef = parse_ron(&full_path)?;
+            let folder_matches = q_dir
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name == quadrant.id);
+            if !folder_matches {
+                return Err(ContentError::UnknownReference {
+                    kind: "quadrant folder",
+                    id: quadrant.id,
+                });
+            }
+            all_quadrants.push((q_dir, quadrant));
+        }
+
+        validate_quadrant_geometry(&all_quadrants)?;
+
+        if let Some(target_id) = quadrant_id
+            && !all_quadrants.iter().any(|(_, q)| q.id == target_id)
+        {
+            return Err(ContentError::UnknownReference {
+                kind: "quadrant",
+                id: target_id.to_owned(),
+            });
+        }
+
+        let selected_quadrants: Vec<(PathBuf, QuadrantDef)> = match quadrant_id {
+            Some(target_id) => all_quadrants
+                .into_iter()
+                .filter(|(_, q)| q.id == target_id)
+                .collect(),
+            None => all_quadrants,
+        };
+
+        let mut quadrants: Vec<QuadrantDef> = Vec::with_capacity(selected_quadrants.len());
+        let mut systems: Vec<SystemDef> = Vec::new();
+        let mut scoped_quests: Vec<(String, QuestDef)> = Vec::new();
+        let mut scoped_pilots: Vec<(String, PilotDef)> = Vec::new();
+
+        for (q_dir, quadrant) in selected_quadrants {
+            for sys_rel in &quadrant.systems {
+                if !is_normal_relative_path(sys_rel) {
+                    return Err(ContentError::UnknownReference {
+                        kind: "system path",
+                        id: sys_rel.clone(),
+                    });
+                }
+                let mut system: SystemDef = parse_ron(&q_dir.join(sys_rel))?;
+                if !system.quadrant.is_empty() && system.quadrant != quadrant.id {
+                    return Err(ContentError::UnknownReference {
+                        kind: "system quadrant",
+                        id: system.id,
+                    });
+                }
+                system.quadrant = quadrant.id.clone();
+                if system.position.0.is_finite() && system.position.1.is_finite() {
+                    system.position = (
+                        quadrant.origin.0 + system.position.0,
+                        quadrant.origin.1 + system.position.1,
+                    );
+                }
+                systems.push(system);
+            }
+            for quest_rel in &quadrant.quests {
+                if !is_normal_relative_path(quest_rel) {
+                    return Err(ContentError::UnknownReference {
+                        kind: "quest path",
+                        id: quest_rel.clone(),
+                    });
+                }
+                let quest: QuestDef = parse_ron(&q_dir.join(quest_rel))?;
+                scoped_quests.push((quadrant.id.clone(), quest));
+            }
+            for pilot_rel in &quadrant.pilots {
+                if !is_normal_relative_path(pilot_rel) {
+                    return Err(ContentError::UnknownReference {
+                        kind: "pilot path",
+                        id: pilot_rel.clone(),
+                    });
+                }
+                let pilot: PilotDef = parse_ron(&q_dir.join(pilot_rel))?;
+                scoped_pilots.push((quadrant.id.clone(), pilot));
+            }
+            quadrants.push(quadrant);
+        }
 
         let mut ships: Vec<ShipDef> = Vec::with_capacity(manifest.ships.len());
         for path in &manifest.ships {
             ships.push(parse_ron(&root.join(path))?);
-        }
-
-        let mut systems: Vec<SystemDef> = Vec::with_capacity(manifest.systems.len());
-        for path in &manifest.systems {
-            systems.push(parse_ron(&root.join(path))?);
         }
 
         let mut outfits: Vec<OutfitDef> = Vec::with_capacity(manifest.outfits.len());
@@ -55,11 +156,6 @@ impl ContentPack {
             commodities.push(parse_ron(&root.join(path))?);
         }
 
-        let mut quests: Vec<QuestDef> = Vec::with_capacity(manifest.quests.len());
-        for path in &manifest.quests {
-            quests.push(parse_ron(&root.join(path))?);
-        }
-
         let mut scenarios: Vec<ScenarioDef> = Vec::with_capacity(manifest.scenarios.len());
         for path in &manifest.scenarios {
             scenarios.push(parse_ron(&root.join(path))?);
@@ -70,25 +166,31 @@ impl ContentPack {
             factions.push(parse_ron(&root.join(path))?);
         }
 
-        let mut pilots: Vec<PilotDef> = Vec::with_capacity(manifest.pilots.len());
-        for path in &manifest.pilots {
-            pilots.push(parse_ron(&root.join(path))?);
+        if quadrant_id.is_some() {
+            scenarios.retain(|scenario| {
+                scenario_resolvable_in_scope(scenario, &systems, &scoped_quests)
+            });
         }
 
         Self::validate(
+            &quadrants,
             &ships,
             &systems,
             &outfits,
             &commodities,
-            &quests,
+            &scoped_quests,
             &scenarios,
             &factions,
-            &pilots,
+            &scoped_pilots,
         )?;
         Self::validate_assets(root, &ships, &systems, &outfits, &commodities)?;
 
+        let quests = scoped_quests.into_iter().map(|(_, q)| q).collect();
+        let pilots = scoped_pilots.into_iter().map(|(_, p)| p).collect();
+
         Ok(Self {
             manifest,
+            quadrants,
             ships,
             systems,
             outfits,
@@ -160,6 +262,10 @@ impl ContentPack {
         Ok(())
     }
 
+    pub fn quadrant(&self, id: &str) -> Option<&QuadrantDef> {
+        self.quadrants.iter().find(|quadrant| quadrant.id == id)
+    }
+
     pub fn ship(&self, id: &str) -> Option<&ShipDef> {
         self.ships.iter().find(|ship| ship.id == id)
     }
@@ -197,11 +303,9 @@ impl ContentPack {
     }
 
     pub fn validate_pilot(&self, pilot: &PilotDef) -> Result<(), ContentError> {
-        let ship_ids: std::collections::HashSet<_> =
-            self.ships.iter().map(|s| s.id.clone()).collect();
-        let commodity_ids: std::collections::HashSet<_> =
-            self.commodities.iter().map(|c| c.id.clone()).collect();
-        let dockable_refs: std::collections::HashSet<String> = self
+        let ship_ids: HashSet<_> = self.ships.iter().map(|s| s.id.clone()).collect();
+        let commodity_ids: HashSet<_> = self.commodities.iter().map(|c| c.id.clone()).collect();
+        let dockable_refs: HashSet<String> = self
             .systems
             .iter()
             .flat_map(|s| {
@@ -220,14 +324,15 @@ impl ContentPack {
 
     #[allow(clippy::too_many_arguments)]
     fn validate(
+        quadrants: &[QuadrantDef],
         ships: &[ShipDef],
         systems: &[SystemDef],
         outfits: &[OutfitDef],
         commodities: &[CommodityDef],
-        quests: &[QuestDef],
+        scoped_quests: &[(String, QuestDef)],
         scenarios: &[ScenarioDef],
         factions: &[FactionDef],
-        pilots: &[PilotDef],
+        scoped_pilots: &[(String, PilotDef)],
     ) -> Result<(), ContentError> {
         validate_ids("ship", ships.iter().map(|ship| ship.id.clone()))?;
         validate_ids("system", systems.iter().map(|system| system.id.clone()))?;
@@ -236,20 +341,27 @@ impl ContentPack {
             "commodity",
             commodities.iter().map(|commodity| commodity.id.clone()),
         )?;
-        validate_ids("quest", quests.iter().map(|quest| quest.id.clone()))?;
+        validate_ids(
+            "quest",
+            scoped_quests.iter().map(|(_, quest)| quest.id.clone()),
+        )?;
         validate_ids(
             "scenario",
             scenarios.iter().map(|scenario| scenario.id.clone()),
         )?;
         validate_ids("faction", factions.iter().map(|faction| faction.id.clone()))?;
-        validate_ids("pilot", pilots.iter().map(|pilot| pilot.id.clone()))?;
+        validate_ids(
+            "pilot",
+            scoped_pilots.iter().map(|(_, pilot)| pilot.id.clone()),
+        )?;
         validate_ids(
             "pilot username",
-            pilots.iter().map(|pilot| pilot.username.clone()),
+            scoped_pilots
+                .iter()
+                .map(|(_, pilot)| pilot.username.clone()),
         )?;
 
-        let faction_ids: std::collections::HashSet<_> =
-            factions.iter().map(|f| f.id.clone()).collect();
+        let faction_ids: HashSet<_> = factions.iter().map(|f| f.id.clone()).collect();
         for faction in factions {
             let in_range = [faction.color.0, faction.color.1, faction.color.2]
                 .into_iter()
@@ -267,10 +379,8 @@ impl ContentPack {
             }
         }
 
-        let outfit_ids: std::collections::HashSet<_> =
-            outfits.iter().map(|o| o.id.clone()).collect();
-        let commodity_ids: std::collections::HashSet<_> =
-            commodities.iter().map(|c| c.id.clone()).collect();
+        let outfit_ids: HashSet<_> = outfits.iter().map(|o| o.id.clone()).collect();
+        let commodity_ids: HashSet<_> = commodities.iter().map(|c| c.id.clone()).collect();
         for outfit in outfits {
             let positive = |value: f32| value.is_finite() && value > 0.0;
             let valid = outfit.price > 0
@@ -320,9 +430,15 @@ impl ContentPack {
             })?;
         }
 
-        let system_ids: std::collections::HashSet<_> =
-            systems.iter().map(|s| s.id.clone()).collect();
+        let quadrant_by_id: HashMap<&str, &QuadrantDef> =
+            quadrants.iter().map(|q| (q.id.as_str(), q)).collect();
+        let system_ids: HashSet<_> = systems.iter().map(|s| s.id.clone()).collect();
+        let system_quadrants: HashMap<&str, &str> = systems
+            .iter()
+            .map(|s| (s.id.as_str(), s.quadrant.as_str()))
+            .collect();
         let ship_ids = ships.iter().map(|s| s.id.clone()).collect();
+
         for system in systems {
             for port in system
                 .planets
@@ -437,6 +553,18 @@ impl ContentPack {
                     id: system.id.clone(),
                 });
             }
+            let Some(quadrant) = quadrant_by_id.get(system.quadrant.as_str()) else {
+                return Err(ContentError::UnknownReference {
+                    kind: "system quadrant",
+                    id: system.id.clone(),
+                });
+            };
+            if !quadrant.contains_with_clearance(system.position, SYSTEM_EDGE_CLEARANCE) {
+                return Err(ContentError::UnknownReference {
+                    kind: "quadrant edge clearance",
+                    id: format!("{}/{}", quadrant.id, system.id),
+                });
+            }
             for link in &system.links {
                 validate_reference("system link", link, &system_ids)?;
                 let target_has_back_link = systems
@@ -449,20 +577,36 @@ impl ContentPack {
                         id: format!("{}->{}", system.id, link),
                     });
                 }
+                if system_quadrants.get(link.as_str()) != Some(&system.quadrant.as_str()) {
+                    return Err(ContentError::UnknownReference {
+                        kind: "cross-quadrant link",
+                        id: format!("{}->{}", system.id, link),
+                    });
+                }
             }
         }
 
-        let planet_refs: std::collections::HashSet<String> = systems
+        // Enforce global uniqueness of planet and station IDs across all quadrants.
+        validate_ids(
+            "docking location",
+            systems.iter().flat_map(|s| {
+                s.planets
+                    .iter()
+                    .map(|p| p.id.clone())
+                    .chain(s.stations.iter().map(|st| st.id.clone()))
+            }),
+        )?;
+
+        let planet_refs: HashSet<String> = systems
             .iter()
             .flat_map(|s| s.planets.iter().map(move |p| format!("{}/{}", s.id, p.id)))
             .collect();
-        let planet_ids: std::collections::HashSet<String> = systems
+        let planet_ids: HashSet<String> = systems
             .iter()
             .flat_map(|s| s.planets.iter().map(|p| p.id.clone()))
             .collect();
-        let quest_ids: std::collections::HashSet<String> =
-            quests.iter().map(|q| q.id.clone()).collect();
-        let station_refs: std::collections::HashSet<String> = systems
+        let quest_ids: HashSet<String> = scoped_quests.iter().map(|(_, q)| q.id.clone()).collect();
+        let station_refs: HashSet<String> = systems
             .iter()
             .flat_map(|s| {
                 s.stations
@@ -470,9 +614,8 @@ impl ContentPack {
                     .map(move |station| format!("{}/{}", s.id, station.id))
             })
             .collect();
-        let dockable_refs: std::collections::HashSet<String> =
-            planet_refs.union(&station_refs).cloned().collect();
-        let dockable_ids: std::collections::HashSet<String> = planet_ids
+        let dockable_refs: HashSet<String> = planet_refs.union(&station_refs).cloned().collect();
+        let dockable_ids: HashSet<String> = planet_ids
             .iter()
             .cloned()
             .chain(
@@ -482,7 +625,7 @@ impl ContentPack {
             )
             .collect();
 
-        for quest in quests {
+        for (quest_quadrant, quest) in scoped_quests {
             if quest.id.starts_with("contract-") {
                 return Err(ContentError::UnknownReference {
                     kind: "quest id prefix",
@@ -492,14 +635,34 @@ impl ContentPack {
             let giver_ref = format!("{}/{}", quest.giver.0, quest.giver.1);
             validate_reference("quest giver planet", &giver_ref, &dockable_refs)?;
             validate_station_quest_host(systems, &quest.giver)?;
+            if system_quadrants.get(quest.giver.0.as_str()) != Some(&quest_quadrant.as_str()) {
+                return Err(ContentError::UnknownReference {
+                    kind: "cross-quadrant quest",
+                    id: quest.id.clone(),
+                });
+            }
             match &quest.kind {
                 QuestKind::Delivery { destination, .. } => {
                     let dest_ref = format!("{}/{}", destination.0, destination.1);
                     validate_reference("quest destination planet", &dest_ref, &dockable_refs)?;
                     validate_station_quest_host(systems, destination)?;
+                    if system_quadrants.get(destination.0.as_str())
+                        != Some(&quest_quadrant.as_str())
+                    {
+                        return Err(ContentError::UnknownReference {
+                            kind: "cross-quadrant quest",
+                            id: quest.id.clone(),
+                        });
+                    }
                 }
                 QuestKind::Bounty { system, .. } => {
                     validate_reference("quest target system", system, &system_ids)?;
+                    if system_quadrants.get(system.as_str()) != Some(&quest_quadrant.as_str()) {
+                        return Err(ContentError::UnknownReference {
+                            kind: "cross-quadrant quest",
+                            id: quest.id.clone(),
+                        });
+                    }
                 }
             }
         }
@@ -600,19 +763,103 @@ impl ContentPack {
             }
         }
 
-        for pilot in pilots {
+        for (pilot_quadrant, pilot) in scoped_pilots {
             validate_pilot_def(pilot, &dockable_refs, &commodity_ids, &ship_ids)?;
+            if system_quadrants.get(pilot.home_system.as_str()) != Some(&pilot_quadrant.as_str()) {
+                return Err(ContentError::UnknownReference {
+                    kind: "cross-quadrant pilot",
+                    id: pilot.id.clone(),
+                });
+            }
         }
 
         Ok(())
     }
 }
 
+fn is_normal_relative_path(raw: &str) -> bool {
+    let path = Path::new(raw);
+    !raw.is_empty()
+        && !path.is_absolute()
+        && path
+            .components()
+            .all(|comp| matches!(comp, Component::Normal(_)))
+}
+
+fn validate_quadrant_geometry(quadrants: &[(PathBuf, QuadrantDef)]) -> Result<(), ContentError> {
+    validate_ids("quadrant", quadrants.iter().map(|(_, q)| q.id.clone()))?;
+    for (_, q) in quadrants {
+        let valid = !q.id.trim().is_empty()
+            && !q.name.trim().is_empty()
+            && q.origin.0.is_finite()
+            && q.origin.1.is_finite()
+            && q.size.0.is_finite()
+            && q.size.1.is_finite()
+            && q.size.0 > 2.0 * SYSTEM_EDGE_CLEARANCE
+            && q.size.1 > 2.0 * SYSTEM_EDGE_CLEARANCE;
+        if !valid {
+            return Err(ContentError::UnknownReference {
+                kind: "quadrant config",
+                id: q.id.clone(),
+            });
+        }
+    }
+    for (i, (_, a)) in quadrants.iter().enumerate() {
+        for (_, b) in quadrants.iter().skip(i + 1) {
+            if a.overlaps(b) {
+                return Err(ContentError::UnknownReference {
+                    kind: "quadrant overlap",
+                    id: format!("{}<->{}", a.id, b.id),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn scenario_resolvable_in_scope(
+    scenario: &ScenarioDef,
+    systems: &[SystemDef],
+    scoped_quests: &[(String, QuestDef)],
+) -> bool {
+    let system_ids: HashSet<&str> = systems.iter().map(|s| s.id.as_str()).collect();
+    let planet_ids: HashSet<&str> = systems
+        .iter()
+        .flat_map(|s| s.planets.iter().map(|p| p.id.as_str()))
+        .collect();
+    let dockable_ids: HashSet<&str> = systems
+        .iter()
+        .flat_map(|s| {
+            s.planets
+                .iter()
+                .map(|p| p.id.as_str())
+                .chain(s.stations.iter().map(|st| st.id.as_str()))
+        })
+        .collect();
+    let quest_ids: HashSet<&str> = scoped_quests.iter().map(|(_, q)| q.id.as_str()).collect();
+
+    scenario.steps.iter().all(|step| match step {
+        ScenarioStep::FlyToStation { system, .. }
+        | ScenarioStep::Dock { system, .. }
+        | ScenarioStep::FlyToPlanet { system, .. }
+        | ScenarioStep::FlyToSystem { system }
+        | ScenarioStep::AssertSystem(system)
+        | ScenarioStep::FlyToStar { system, .. }
+        | ScenarioStep::FlyToBlackHole { system }
+        | ScenarioStep::AssertPrice { system, .. }
+        | ScenarioStep::AssertControl { system, .. } => system_ids.contains(system.as_str()),
+        ScenarioStep::Land { planet } => planet_ids.contains(planet.as_str()),
+        ScenarioStep::AssertDocked(Some(loc)) => dockable_ids.contains(loc.as_str()),
+        ScenarioStep::AssertCompletedQuest(quest_id) => quest_ids.contains(quest_id.as_str()),
+        _ => true,
+    })
+}
+
 fn validate_pilot_def(
     pilot: &PilotDef,
-    dockable_refs: &std::collections::HashSet<String>,
-    commodity_ids: &std::collections::HashSet<String>,
-    ship_ids: &std::collections::HashSet<String>,
+    dockable_refs: &HashSet<String>,
+    commodity_ids: &HashSet<String>,
+    ship_ids: &HashSet<String>,
 ) -> Result<(), ContentError> {
     let valid_config = !pilot.id.trim().is_empty()
         && !pilot.name.trim().is_empty()

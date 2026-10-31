@@ -4,6 +4,7 @@
     government: "independent",
     description: "A frontier system where the paperwork is thin and the patronage is thinner.",
     position: (2000.0, 0.0),
+    pirate: true,
     links: ["sol", "procyon", "tarsis"],
     planets: [
         (
