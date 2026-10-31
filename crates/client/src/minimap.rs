@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use sv_protocol::{
-    BlackHoleTag, DockableKind, DockableTag, Heading, Position, ShipInfo, ShipKind, StarTag,
-    SystemMembership,
+    BlackHoleTag, DockableKind, DockableTag, Heading, MoonTag, Position, ShipInfo, ShipKind,
+    StarTag, SystemMembership,
 };
 
 use crate::MyNetworkId;
@@ -137,17 +137,20 @@ fn spawn_minimap(
 
 fn dot_color(
     planet: Option<&DockableTag>,
+    moon: Option<&MoonTag>,
     star: Option<&StarTag>,
     black_hole: Option<&BlackHoleTag>,
     ship_info: Option<&ShipInfo>,
     my_id: u64,
 ) -> Color {
     if let Some(port) = planet {
-        if port.kind == DockableKind::Station {
-            Color::srgb(0.3, 1.0, 0.8)
-        } else {
-            Color::srgb(0.35, 0.65, 1.0)
+        match port.kind {
+            DockableKind::Station => Color::srgb(0.3, 1.0, 0.8),
+            DockableKind::Moon => Color::srgb(0.65, 0.82, 0.98),
+            DockableKind::Planet => Color::srgb(0.35, 0.65, 1.0),
         }
+    } else if moon.is_some() {
+        Color::srgb(0.68, 0.72, 0.8)
     } else if star.is_some() {
         Color::srgb(1.0, 0.6, 0.15)
     } else if black_hole.is_some() {
@@ -178,6 +181,7 @@ type MinimapEntities<'w, 's> = Query<
     (
         &'static Position,
         Option<&'static DockableTag>,
+        Option<&'static MoonTag>,
         Option<&'static StarTag>,
         Option<&'static BlackHoleTag>,
         Option<&'static ShipInfo>,
@@ -212,7 +216,7 @@ fn update_minimap(
 
     let mut assignments: Vec<(f32, f32, Color)> = Vec::with_capacity(DOT_COUNT);
 
-    for (pos, planet, star, black_hole, ship_info) in &entities {
+    for (pos, planet, moon, star, black_hole, ship_info) in &entities {
         if let Some(info) = ship_info
             && info.owner == Some(my_id.0)
         {
@@ -230,7 +234,7 @@ fn update_minimap(
         assignments.push((
             mx,
             my,
-            dot_color(planet, star, black_hole, ship_info, my_id.0),
+            dot_color(planet, moon, star, black_hole, ship_info, my_id.0),
         ));
     }
 

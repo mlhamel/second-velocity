@@ -7,6 +7,9 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 pub struct Textures {
     pub ships: [Handle<Image>; 4],
     pub planet: Handle<Image>,
+    pub moon: Handle<Image>,
+    pub ring_back: Handle<Image>,
+    pub ring_front: Handle<Image>,
     pub station: Handle<Image>,
     pub star: Handle<Image>,
     pub black_hole: Handle<Image>,
@@ -27,6 +30,9 @@ pub(crate) fn create_textures(
         images.add(ship_image(92)),
     ];
     let planet = images.add(planet_image(180));
+    let moon = images.add(moon_image(64));
+    let ring_back = images.add(planet_ring_half_image(192, false));
+    let ring_front = images.add(planet_ring_half_image(192, true));
     let station = images.add(station_image(128));
     let star = images.add(star_image(128));
     let black_hole = images.add(black_hole_image(128));
@@ -53,6 +59,9 @@ pub(crate) fn create_textures(
     commands.insert_resource(Textures {
         ships,
         planet,
+        moon,
+        ring_back,
+        ring_front,
         station,
         star,
         black_hole,
@@ -220,6 +229,93 @@ fn planet_image(size: u32) -> Image {
         }
     }
     quantize_shading(&mut data, size, 5);
+    image_from_rgba(size, data)
+}
+
+fn moon_image(size: u32) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    let radius = s * 0.44;
+    let craters = [
+        (-0.16, -0.10, 0.11),
+        (0.14, 0.08, 0.09),
+        (-0.04, 0.20, 0.07),
+    ];
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - s / 2.0;
+            let dy = y as f32 + 0.5 - s / 2.0;
+            let distance = (dx * dx + dy * dy).sqrt();
+            let index = ((y * size + x) * 4) as usize;
+            if distance <= radius {
+                let nx = dx / radius;
+                let ny = dy / radius;
+                let light = ((1.0 - (distance / radius).powi(2)).sqrt() * 0.45
+                    + (-nx * 0.35 - ny * 0.25)
+                    + 0.55)
+                    .clamp(0.28, 1.0);
+                let mut shade = light;
+                for (cx, cy, cr) in craters {
+                    let cd = (dx / s - cx).hypot(dy / s - cy);
+                    if cd <= cr {
+                        shade *= 0.78;
+                    }
+                }
+                let value = (shade * 255.0) as u8;
+                data[index] = value;
+                data[index + 1] = value;
+                data[index + 2] = value;
+                data[index + 3] = 255;
+            }
+        }
+    }
+    quantize_shading(&mut data, size, 4);
+    outline_silhouette(&mut data, size, [26, 28, 34]);
+    image_from_rgba(size, data)
+}
+
+fn planet_ring_half_image(size: u32, front_half: bool) -> Image {
+    let mut data = vec![0; (size * size * 4) as usize];
+    let s = size as f32;
+    let center = s / 2.0;
+    let max_r = s * 0.47;
+    let min_r = s * 0.28;
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - center;
+            let dy = y as f32 + 0.5 - center;
+            // In image coordinates, y < center is the top half (rendered behind the planet at z < 0),
+            // and y >= center is the bottom half (rendered in front of the planet at z > 0).
+            let in_half = if front_half { dy >= 0.0 } else { dy <= 0.0 };
+            if !in_half {
+                continue;
+            }
+            let r = dx.hypot(dy);
+            if r < min_r || r > max_r {
+                continue;
+            }
+            let t = (r - min_r) / (max_r - min_r);
+            // Cassini-style division gap around t in 0.56..0.64.
+            if (0.56..=0.64).contains(&t) {
+                continue;
+            }
+            let band = ((t * 14.0).sin() * 0.15 + 0.85).clamp(0.55, 1.0);
+            let checker = ((x + y) % 2 == 0) as u8;
+            let alpha = if (0.22..=0.52).contains(&t) {
+                215
+            } else if checker == 0 {
+                175
+            } else {
+                125
+            };
+            let v = (band * 255.0) as u8;
+            let index = ((y * size + x) * 4) as usize;
+            data[index] = v;
+            data[index + 1] = v;
+            data[index + 2] = v;
+            data[index + 3] = alpha;
+        }
+    }
     image_from_rgba(size, data)
 }
 
@@ -515,7 +611,12 @@ mod tests {
 
     fn assert_opaque_pixels(image: &Image, min_count: usize) {
         let data = image.data.as_ref().expect("texture keeps cpu data");
-        let opaque = data.chunks_exact(4).filter(|chunk| chunk[3] > 0).count();
+        let opaque = data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|chunk| chunk[3] > 0)
+            .count();
         assert!(opaque >= min_count, "expected at least {min_count} pixels");
     }
 
@@ -527,6 +628,9 @@ mod tests {
             assert_opaque_pixels(&ship, size as usize * size as usize / 10);
         }
         assert_opaque_pixels(&planet_image(180), 19_000);
+        assert_opaque_pixels(&moon_image(64), 2_000);
+        assert_opaque_pixels(&planet_ring_half_image(192, false), 1_500);
+        assert_opaque_pixels(&planet_ring_half_image(192, true), 1_500);
         assert_opaque_pixels(&station_image(128), 1_000);
         assert_opaque_pixels(&star_image(128), 3_000);
         assert_opaque_pixels(&black_hole_image(128), 1_000);

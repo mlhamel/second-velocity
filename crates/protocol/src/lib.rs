@@ -117,6 +117,16 @@ pub struct PlanetTag {
 }
 
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MoonTag {
+    pub system: String,
+    pub planet: String,
+    pub id: String,
+    pub name: String,
+    pub radius: f32,
+    pub landable: bool,
+}
+
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StarTag {
     pub system: String,
     pub radius: f32,
@@ -137,6 +147,7 @@ pub enum DockableKind {
     #[default]
     Planet,
     Station,
+    Moon,
 }
 
 impl DockableKind {
@@ -144,6 +155,7 @@ impl DockableKind {
         match self {
             Self::Planet => "planet",
             Self::Station => "station",
+            Self::Moon => "moon",
         }
     }
 }
@@ -414,6 +426,7 @@ pub fn register(app: &mut App) {
         .replicate::<ShipInfo>()
         .replicate::<Projectile>()
         .replicate::<PlanetTag>()
+        .replicate::<MoonTag>()
         .replicate::<DockableTag>()
         .replicate::<StarTag>()
         .replicate::<BlackHoleTag>()
@@ -543,6 +556,14 @@ mod tests {
             id: "earth".into(),
             name: "Earth".into(),
             radius: 90.0,
+        });
+        roundtrip(MoonTag {
+            system: "sol".into(),
+            planet: "earth".into(),
+            id: "luna".into(),
+            name: "Luna".into(),
+            radius: 26.0,
+            landable: true,
         });
         roundtrip(StarTag {
             system: "sol".into(),

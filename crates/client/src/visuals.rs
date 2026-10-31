@@ -7,9 +7,9 @@ use bevy::prelude::*;
 use bevy_replicon::prelude::*;
 use sv_data::ShipSize;
 use sv_protocol::{
-    BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, PlanetTag,
-    Position, Projectile, ProjectileKind, ShipInfo, ShipKind, StarTag, TargetId, TargetLock,
-    Velocity,
+    BlackHoleTag, DockableKind, DockableTag, Explosion, Heading, Hull, Meteorite, MoonTag,
+    PlanetTag, Position, Projectile, ProjectileKind, ShipInfo, ShipKind, StarTag, TargetId,
+    TargetLock, Velocity,
 };
 
 const FLASH_SECS: f32 = 0.18;
@@ -32,7 +32,12 @@ impl Plugin for VisualsPlugin {
             Update,
             (
                 attach_ship_visuals,
-                (attach_planet_visuals, attach_station_visuals).chain(),
+                (
+                    attach_planet_visuals,
+                    attach_moon_visuals,
+                    attach_station_visuals,
+                )
+                    .chain(),
                 attach_star_visuals,
                 attach_black_hole_visuals,
                 attach_projectile_visuals,
@@ -42,7 +47,12 @@ impl Plugin for VisualsPlugin {
                 tick_flashes,
                 debris_flight,
                 sync_ship_transforms,
-                (sync_planet_transforms, sync_station_transforms).chain(),
+                (
+                    sync_planet_transforms,
+                    sync_moon_transforms,
+                    sync_station_transforms,
+                )
+                    .chain(),
                 sync_star_transforms,
                 sync_black_hole_transforms,
                 sync_projectile_transforms,
@@ -84,6 +94,9 @@ mod tests {
             .insert_resource(Textures {
                 ships: std::array::from_fn(|_| default()),
                 planet: default(),
+                moon: default(),
+                ring_back: default(),
+                ring_front: default(),
                 station: default(),
                 star: default(),
                 black_hole: default(),
@@ -139,6 +152,9 @@ struct ShipVisual;
 
 #[derive(Component)]
 struct PlanetVisual;
+
+#[derive(Component)]
+struct MoonVisual;
 
 #[derive(Component)]
 struct StationVisual;
@@ -234,11 +250,11 @@ fn attach_planet_visuals(
     added: AddedPlanets,
 ) {
     for (entity, planet) in &added {
-        let sprite_path = content
+        let planet_def = content
             .0
             .system(&planet.system)
-            .and_then(|system| system.planets.iter().find(|p| p.id == planet.id))
-            .and_then(|p| p.sprite.clone());
+            .and_then(|system| system.planets.iter().find(|p| p.id == planet.id));
+        let sprite_path = planet_def.and_then(|p| p.sprite.clone());
         let (image, color) = match sprite_path {
             Some(path) => (asset_server.load(path), Color::WHITE),
             None => {
@@ -255,7 +271,70 @@ fn attach_planet_visuals(
         let mut sprite = Sprite::from_image(image);
         sprite.color = color;
         sprite.custom_size = Some(Vec2::splat(planet.radius * 2.0));
-        commands.entity(entity).insert((PlanetVisual, sprite));
+        let mut entity_cmds = commands.entity(entity);
+        entity_cmds.insert((PlanetVisual, sprite));
+
+        if let Some(ring) = planet_def.and_then(|p| p.ring.as_ref()) {
+            let ring_color = Color::srgb(ring.color.0, ring.color.1, ring.color.2);
+            let ring_span = ring.outer_radius * 2.15;
+            let ring_size = Vec2::new(ring_span, ring_span * ring.aspect);
+            let rotation = Quat::from_rotation_z(ring.tilt_deg.to_radians());
+
+            let mut back_sprite = Sprite::from_image(textures.ring_back.clone());
+            back_sprite.color = ring_color;
+            back_sprite.custom_size = Some(ring_size);
+
+            let mut front_sprite = Sprite::from_image(textures.ring_front.clone());
+            front_sprite.color = ring_color;
+            front_sprite.custom_size = Some(ring_size);
+
+            entity_cmds.with_children(|parent| {
+                parent.spawn((
+                    back_sprite,
+                    Transform::from_xyz(0.0, 0.0, -0.1).with_rotation(rotation),
+                ));
+                parent.spawn((
+                    front_sprite,
+                    Transform::from_xyz(0.0, 0.0, 0.1).with_rotation(rotation),
+                ));
+            });
+        }
+    }
+}
+
+type AddedMoons<'w, 's> = Query<'w, 's, (Entity, &'static MoonTag), (Added<MoonTag>, With<Remote>)>;
+
+fn attach_moon_visuals(
+    mut commands: Commands,
+    textures: Res<Textures>,
+    asset_server: Res<AssetServer>,
+    content: Res<ClientContent>,
+    added: AddedMoons,
+) {
+    for (entity, moon) in &added {
+        let sprite_path = content
+            .0
+            .system(&moon.system)
+            .and_then(|system| system.planets.iter().find(|p| p.id == moon.planet))
+            .and_then(|planet| planet.moons.iter().find(|m| m.id == moon.id))
+            .and_then(|m| m.sprite.clone());
+        let (image, color) = match sprite_path {
+            Some(path) => (asset_server.load(path), Color::WHITE),
+            None => {
+                let palette = [
+                    Color::srgb(0.85, 0.86, 0.90),
+                    Color::srgb(0.78, 0.72, 0.65),
+                    Color::srgb(0.68, 0.78, 0.86),
+                    Color::srgb(0.82, 0.76, 0.72),
+                ];
+                let seed = moon.id.bytes().map(|b| b as usize).sum::<usize>();
+                (textures.moon.clone(), palette[seed % palette.len()])
+            }
+        };
+        let mut sprite = Sprite::from_image(image);
+        sprite.color = color;
+        sprite.custom_size = Some(Vec2::splat(moon.radius * 2.0));
+        commands.entity(entity).insert((MoonVisual, sprite));
     }
 }
 
@@ -474,7 +553,13 @@ fn sync_ship_transforms(mut ships: Query<(&Position, &Heading, &mut Transform), 
 
 fn sync_planet_transforms(mut planets: Query<(&Position, &mut Transform), With<PlanetVisual>>) {
     for (position, mut transform) in &mut planets {
-        transform.translation = position.0.extend(0.0);
+        transform.translation = position.0.extend(-0.3);
+    }
+}
+
+fn sync_moon_transforms(mut moons: Query<(&Position, &mut Transform), With<MoonVisual>>) {
+    for (position, mut transform) in &mut moons {
+        transform.translation = position.0.extend(-0.45);
     }
 }
 
