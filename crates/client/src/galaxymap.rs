@@ -13,11 +13,21 @@ const MAP_PAD: f32 = 48.0;
 const DOT_SIZE: f32 = 10.0;
 const METER_EPSILON: i32 = 1;
 const TITLE_COLOR: Color = Color::srgb(0.6, 0.75, 0.9);
+const QUADRANT_LABEL_COLOR: Color = Color::srgb(0.45, 0.65, 0.85);
 const PLAYER_MARKER_COLOR: Color = Color::srgb(0.35, 1.0, 0.5);
 const NEUTRAL_DOT_COLOR: Color = Color::srgb(0.55, 0.55, 0.5);
 
 #[derive(Component)]
 struct GalaxyMapRoot;
+
+#[derive(Component)]
+struct GalaxyMapQuadrantBox {
+    #[allow(dead_code)]
+    quadrant: String,
+}
+
+#[derive(Component)]
+struct GalaxyMapQuadrantLabel;
 
 #[derive(Component)]
 struct GalaxyMapDot {
@@ -52,6 +62,10 @@ impl MapProjection {
     fn from_content(pack: &sv_data::ContentPack) -> Self {
         let mut min = Vec2::splat(f32::MAX);
         let mut max = Vec2::splat(f32::MIN);
+        for quadrant in &pack.quadrants {
+            min = min.min(Vec2::new(quadrant.min_x(), quadrant.min_y()));
+            max = max.max(Vec2::new(quadrant.max_x(), quadrant.max_y()));
+        }
         for system in &pack.systems {
             let pos = Vec2::new(system.position.0, system.position.1);
             min = min.min(pos);
@@ -61,12 +75,16 @@ impl MapProjection {
         Self { min, span }
     }
 
-    fn project(&self, world: Vec2) -> Vec2 {
+    fn project_point(&self, world: Vec2) -> Vec2 {
         let norm = (world - self.min) / self.span;
         Vec2::new(
-            MAP_PAD + norm.x * (MAP_WIDTH - MAP_PAD * 2.0) - DOT_SIZE / 2.0,
-            MAP_HEIGHT - MAP_PAD - norm.y * (MAP_HEIGHT - MAP_PAD * 2.0) - DOT_SIZE / 2.0,
+            MAP_PAD + norm.x * (MAP_WIDTH - MAP_PAD * 2.0),
+            MAP_HEIGHT - MAP_PAD - norm.y * (MAP_HEIGHT - MAP_PAD * 2.0),
         )
+    }
+
+    fn project(&self, world: Vec2) -> Vec2 {
+        self.project_point(world) - Vec2::splat(DOT_SIZE / 2.0)
     }
 }
 
@@ -121,6 +139,52 @@ fn spawn_galaxy_map(
                 },
                 TextColor(TITLE_COLOR),
             ));
+            for quadrant in &content.0.quadrants {
+                let top_left =
+                    projection.project_point(Vec2::new(quadrant.min_x(), quadrant.max_y()));
+                let bottom_right =
+                    projection.project_point(Vec2::new(quadrant.max_x(), quadrant.min_y()));
+                let box_size = (bottom_right - top_left).max(Vec2::ZERO);
+                panel
+                    .spawn((
+                        GalaxyMapQuadrantBox {
+                            quadrant: quadrant.id.clone(),
+                        },
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: Val::Px(top_left.x),
+                            top: Val::Px(top_left.y),
+                            width: Val::Px(box_size.x),
+                            height: Val::Px(box_size.y),
+                            border: UiRect::all(Val::Px(1.0)),
+                            ..default()
+                        },
+                        BackgroundColor(Color::srgba(0.06, 0.12, 0.22, 0.18)),
+                        BorderColor::all(Color::srgba(0.28, 0.48, 0.72, 0.55)),
+                    ))
+                    .with_children(|q_box| {
+                        q_box.spawn((
+                            Node {
+                                position_type: PositionType::Absolute,
+                                left: Val::Px(6.0),
+                                top: Val::Px(4.0),
+                                ..default()
+                            },
+                            GalaxyMapQuadrantLabel,
+                            Text(format!(
+                                "{} [{}]",
+                                quadrant.name.to_uppercase(),
+                                quadrant.id
+                            )),
+                            TextFont {
+                                font: bevy::text::FontSource::Handle(ui_font.0.clone()),
+                                font_size: bevy::text::FontSize::Px(8.0),
+                                ..default()
+                            },
+                            TextColor(QUADRANT_LABEL_COLOR),
+                        ));
+                    });
+            }
             for system in &content.0.systems {
                 let pos = projection.project(Vec2::new(system.position.0, system.position.1));
                 panel
@@ -298,5 +362,41 @@ fn update_galaxy_map(
         let pos = projection.project(player_pos.0);
         marker.left = Val::Px(pos.x + DOT_SIZE / 2.0);
         marker.top = Val::Px(pos.y + DOT_SIZE / 2.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn projection_covers_quadrant_bounds_and_keeps_systems_inside_box() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+        let pack = sv_data::ContentPack::load_dir(&root).expect("pack loads");
+        let projection = MapProjection::from_content(&pack);
+        let q = &pack.quadrants[0];
+        let top_left = projection.project_point(Vec2::new(q.min_x(), q.max_y()));
+        let bottom_right = projection.project_point(Vec2::new(q.max_x(), q.min_y()));
+        assert!(bottom_right.x > top_left.x);
+        assert!(bottom_right.y > top_left.y);
+        for sys in &pack.systems {
+            let dot = projection.project_point(Vec2::new(sys.position.0, sys.position.1));
+            assert!(
+                dot.x > top_left.x && dot.x < bottom_right.x,
+                "system {} dot x ({}) must sit inside quadrant box ({}..{})",
+                sys.id,
+                dot.x,
+                top_left.x,
+                bottom_right.x
+            );
+            assert!(
+                dot.y > top_left.y && dot.y < bottom_right.y,
+                "system {} dot y ({}) must sit inside quadrant box ({}..{})",
+                sys.id,
+                dot.y,
+                top_left.y,
+                bottom_right.y
+            );
+        }
     }
 }
