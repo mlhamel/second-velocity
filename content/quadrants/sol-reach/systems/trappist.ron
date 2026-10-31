@@ -25,6 +25,28 @@
                 (id: "medicine", price: 68),
                 (id: "food", price: 9),
             ],
+            moons: [
+                (
+                    id: "echo-1",
+                    name: "Echo I",
+                    description: "An inner relay rock studded with passive interferometry masts.",
+                    radius: 16.0,
+                    orbit_radius: 155.0,
+                    period_secs: 85.0,
+                    phase: 0.4,
+                    landable: false,
+                ),
+                (
+                    id: "echo-2",
+                    name: "Echo II",
+                    description: "A cold outer moonlet whose far-side crater shields Deepwatch's deepest baseline receiver.",
+                    radius: 20.0,
+                    orbit_radius: 235.0,
+                    period_secs: 145.0,
+                    phase: 3.5,
+                    landable: false,
+                ),
+            ],
         ),
     ],
 )

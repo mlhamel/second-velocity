@@ -26,6 +26,25 @@
                 (id: "ore", price: 15),
                 (id: "medicine", price: 70),
             ],
+            ring: Some((
+                inner_radius: 112.0,
+                outer_radius: 168.0,
+                tilt_deg: -16.0,
+                aspect: 0.34,
+                color: (0.78, 0.66, 0.48),
+            )),
+            moons: [
+                (
+                    id: "cinder",
+                    name: "Cinder",
+                    description: "A slag-crusted shepherd moonlet that keeps Newhaven's rubble ring in line.",
+                    radius: 18.0,
+                    orbit_radius: 230.0,
+                    period_secs: 110.0,
+                    phase: 2.1,
+                    landable: false,
+                ),
+            ],
         ),
     ],
     meteorites: Some((

@@ -33,6 +33,24 @@
                 (id: "ore", price: 40),
                 (id: "textiles", price: 18),
             ],
+            moons: [
+                (
+                    id: "luna",
+                    name: "Luna",
+                    description: "Grey basalt craters and sealed mass-driver domes. The Helium-3 yards sell bulk ore at dockside rates and never ask why your hull smells like ozone.",
+                    radius: 26.0,
+                    orbit_radius: 340.0,
+                    period_secs: 200.0,
+                    phase: 0.8,
+                    landable: true,
+                    outfitter: Some((outfits: ["light-blaster", "aux-fuel-tank", "shield-generator-1"])),
+                    commodities: [
+                        (id: "ore", price: 18),
+                        (id: "machinery", price: 36),
+                        (id: "isotopes", price: 62),
+                    ],
+                ),
+            ],
         ),
     ],
     stations: [

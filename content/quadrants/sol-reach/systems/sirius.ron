@@ -32,6 +32,30 @@
                 (id: "luxury", price: 88),
                 (id: "textiles", price: 32),
             ],
+            ring: Some((
+                inner_radius: 115.0,
+                outer_radius: 175.0,
+                tilt_deg: 22.0,
+                aspect: 0.32,
+                color: (0.62, 0.78, 0.95),
+            )),
+            moons: [
+                (
+                    id: "vesper",
+                    name: "Vesper",
+                    description: "An estate moon where Sirius Prime's old families keep their private vaults and quieter yacht berths.",
+                    radius: 22.0,
+                    orbit_radius: 250.0,
+                    period_secs: 150.0,
+                    phase: 4.0,
+                    landable: true,
+                    commodities: [
+                        (id: "luxury", price: 72),
+                        (id: "medicine", price: 54),
+                        (id: "food", price: 14),
+                    ],
+                ),
+            ],
         ),
     ],
 )

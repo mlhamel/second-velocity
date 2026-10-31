@@ -92,6 +92,7 @@ pub enum StationPlacement {
 pub enum DockableDef<'a> {
     Planet(&'a PlanetDef),
     Station(&'a StationDef),
+    Moon(&'a MoonDef),
 }
 
 impl<'a> DockableDef<'a> {
@@ -99,30 +100,35 @@ impl<'a> DockableDef<'a> {
         match self {
             Self::Planet(p) => p.shipyard.as_ref(),
             Self::Station(s) => s.shipyard.as_ref(),
+            Self::Moon(m) => m.shipyard.as_ref(),
         }
     }
     pub fn outfitter(self) -> Option<&'a OutfitterDef> {
         match self {
             Self::Planet(p) => p.outfitter.as_ref(),
             Self::Station(s) => s.outfitter.as_ref(),
+            Self::Moon(m) => m.outfitter.as_ref(),
         }
     }
     pub fn name(self) -> &'a str {
         match self {
             Self::Planet(p) => &p.name,
             Self::Station(s) => &s.name,
+            Self::Moon(m) => &m.name,
         }
     }
     pub fn commodities(self) -> &'a [CommodityPrice] {
         match self {
             Self::Planet(p) => &p.commodities,
             Self::Station(s) => &s.commodities,
+            Self::Moon(m) => &m.commodities,
         }
     }
     pub fn host(self) -> Option<&'a ChiefDef> {
         match self {
             Self::Planet(p) => p.chief.as_ref(),
             Self::Station(s) => s.master.as_ref(),
+            Self::Moon(m) => m.chief.as_ref(),
         }
     }
 }
@@ -139,6 +145,19 @@ impl SystemDef {
                     .find(|s| s.id == id)
                     .map(DockableDef::Station)
             })
+            .or_else(|| {
+                self.planets
+                    .iter()
+                    .flat_map(|p| p.moons.iter())
+                    .find(|m| m.landable && m.id == id)
+                    .map(DockableDef::Moon)
+            })
+    }
+
+    pub fn landable_moons(&self) -> impl Iterator<Item = (&PlanetDef, &MoonDef)> {
+        self.planets
+            .iter()
+            .flat_map(|p| p.moons.iter().filter(|m| m.landable).map(move |m| (p, m)))
     }
 
     pub fn planet_position(&self, id: &str) -> Option<(f32, f32)> {
@@ -180,6 +199,45 @@ pub struct MeteoriteFieldDef {
     pub fast_weight: u32,
 }
 
+fn default_ring_aspect() -> f32 {
+    0.35
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlanetRingDef {
+    pub inner_radius: f32,
+    pub outer_radius: f32,
+    #[serde(default)]
+    pub tilt_deg: f32,
+    #[serde(default = "default_ring_aspect")]
+    pub aspect: f32,
+    pub color: (f32, f32, f32),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MoonDef {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub radius: f32,
+    pub orbit_radius: f32,
+    pub period_secs: f32,
+    #[serde(default)]
+    pub phase: f32,
+    #[serde(default)]
+    pub landable: bool,
+    #[serde(default)]
+    pub sprite: Option<String>,
+    #[serde(default)]
+    pub chief: Option<ChiefDef>,
+    #[serde(default)]
+    pub commodities: Vec<CommodityPrice>,
+    #[serde(default)]
+    pub shipyard: Option<ShipyardDef>,
+    #[serde(default)]
+    pub outfitter: Option<OutfitterDef>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlanetDef {
     pub id: String,
@@ -187,6 +245,10 @@ pub struct PlanetDef {
     pub description: String,
     #[serde(default)]
     pub sprite: Option<String>,
+    #[serde(default)]
+    pub ring: Option<PlanetRingDef>,
+    #[serde(default)]
+    pub moons: Vec<MoonDef>,
     #[serde(default)]
     pub chief: Option<ChiefDef>,
     pub commodities: Vec<CommodityPrice>,

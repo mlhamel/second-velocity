@@ -25,7 +25,7 @@ pub use quest::{QuestDef, QuestKind};
 pub use scenario::{ScenarioDef, ScenarioStep};
 pub use ship::{ShipDef, ShipSize};
 pub use system::{
-    BlackHoleDef, ChiefDef, CommodityPrice, DockableDef, MeteoriteFieldDef, OutfitterDef,
-    PLANET_OFFSET_X, PLANET_RADIUS, PLANET_SPACING, PlanetDef, ShipyardDef, StationDef,
-    StationPlacement, SystemDef,
+    BlackHoleDef, ChiefDef, CommodityPrice, DockableDef, MeteoriteFieldDef, MoonDef, OutfitterDef,
+    PLANET_OFFSET_X, PLANET_RADIUS, PLANET_SPACING, PlanetDef, PlanetRingDef, ShipyardDef,
+    StationDef, StationPlacement, SystemDef,
 };

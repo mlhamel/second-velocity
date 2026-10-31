@@ -243,3 +243,42 @@ fn shipped_stations_and_complete_orbits_clear_planets_and_lethal_hazards() {
     }
     assert_eq!(count, 2);
 }
+
+#[test]
+fn shipped_planetary_rings_and_moons_load_and_validate() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
+    let pack = ContentPack::load_dir(&root).unwrap();
+
+    let sol = pack.system("sol").unwrap();
+    let earth = sol.planets.iter().find(|p| p.id == "earth").unwrap();
+    assert_eq!(earth.moons.len(), 1);
+    assert_eq!(earth.moons[0].id, "luna");
+    assert!(earth.moons[0].landable);
+    assert!(matches!(
+        pack.dockable("sol", "luna"),
+        Some(DockableDef::Moon(_))
+    ));
+
+    let centauri = pack.system("alpha-centauri").unwrap();
+    let newhaven = centauri
+        .planets
+        .iter()
+        .find(|p| p.id == "newhaven")
+        .unwrap();
+    assert!(newhaven.ring.is_some());
+    assert_eq!(newhaven.moons.len(), 1);
+    assert_eq!(newhaven.moons[0].id, "cinder");
+    assert!(!newhaven.moons[0].landable);
+    assert!(pack.dockable("alpha-centauri", "cinder").is_none());
+
+    let sirius = pack.system("sirius").unwrap();
+    let sirius_prime = sirius
+        .planets
+        .iter()
+        .find(|p| p.id == "sirius-prime")
+        .unwrap();
+    assert!(sirius_prime.ring.is_some());
+    assert_eq!(sirius_prime.moons.len(), 1);
+    assert_eq!(sirius_prime.moons[0].id, "vesper");
+    assert!(sirius_prime.moons[0].landable);
+}

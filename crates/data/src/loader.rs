@@ -235,6 +235,16 @@ impl ContentPack {
                 {
                     validate_asset(&assets_root, portrait)?;
                 }
+                for moon in &planet.moons {
+                    if let Some(sprite) = &moon.sprite {
+                        validate_asset(&assets_root, sprite)?;
+                    }
+                    if let Some(chief) = &moon.chief
+                        && let Some(portrait) = &chief.portrait
+                    {
+                        validate_asset(&assets_root, portrait)?;
+                    }
+                }
             }
             if let Some(star) = &system.star
                 && let Some(sprite) = &star.sprite
@@ -316,6 +326,10 @@ impl ContentPack {
                         s.stations
                             .iter()
                             .map(move |st| format!("{}/{}", s.id, st.id)),
+                    )
+                    .chain(
+                        s.landable_moons()
+                            .map(move |(_, m)| format!("{}/{}", s.id, m.id)),
                     )
             })
             .collect();
@@ -445,6 +459,7 @@ impl ContentPack {
                 .iter()
                 .map(DockableDef::Planet)
                 .chain(system.stations.iter().map(DockableDef::Station))
+                .chain(system.landable_moons().map(|(_, m)| DockableDef::Moon(m)))
             {
                 if let Some(yard) = port.shipyard() {
                     validate_ids("shipyard stock", yard.ships.iter().cloned())?;
@@ -468,8 +483,98 @@ impl ContentPack {
                     .planets
                     .iter()
                     .map(|p| p.id.clone())
-                    .chain(system.stations.iter().map(|s| s.id.clone())),
+                    .chain(system.stations.iter().map(|s| s.id.clone()))
+                    .chain(system.landable_moons().map(|(_, m)| m.id.clone())),
             )?;
+            validate_ids(
+                "moon",
+                system
+                    .planets
+                    .iter()
+                    .flat_map(|p| p.moons.iter().map(|m| m.id.clone())),
+            )?;
+            for planet in &system.planets {
+                if let Some(ring) = &planet.ring {
+                    let valid_ring = ring.inner_radius.is_finite()
+                        && ring.inner_radius > PLANET_RADIUS + 8.0
+                        && ring.outer_radius.is_finite()
+                        && ring.outer_radius > ring.inner_radius + 10.0
+                        && ring.tilt_deg.is_finite()
+                        && ring.aspect.is_finite()
+                        && (0.15..=0.75).contains(&ring.aspect)
+                        && [ring.color.0, ring.color.1, ring.color.2]
+                            .into_iter()
+                            .all(|c| c.is_finite() && (0.0..=1.0).contains(&c));
+                    if !valid_ring {
+                        return Err(ContentError::UnknownReference {
+                            kind: "planet ring config",
+                            id: format!("{}/{}", system.id, planet.id),
+                        });
+                    }
+                }
+                for (m_idx, moon) in planet.moons.iter().enumerate() {
+                    let center_valid = system.planet_position(&planet.id).is_some_and(|center| {
+                        [center.0, center.1].into_iter().all(|axis| {
+                            axis.is_finite()
+                                && (f64::from(axis).abs()
+                                    + f64::from(moon.orbit_radius)
+                                    + f64::from(moon.radius))
+                                    <= f64::from(f32::MAX)
+                        })
+                    });
+                    let clears_ring = planet.ring.as_ref().is_none_or(|ring| {
+                        moon.orbit_radius - moon.radius > ring.outer_radius + 8.0
+                            || moon.orbit_radius + moon.radius + 8.0 < ring.inner_radius
+                    });
+                    let clears_sibling_moons = planet
+                        .moons
+                        .iter()
+                        .enumerate()
+                        .filter(|(idx, _)| *idx != m_idx)
+                        .all(|(_, other)| {
+                            (moon.orbit_radius - other.orbit_radius).abs()
+                                > moon.radius + other.radius + 10.0
+                        });
+                    let clears_orbital_stations =
+                        system.stations.iter().all(|st| match &st.placement {
+                            StationPlacement::Orbit {
+                                planet: st_planet,
+                                radius: st_orbit,
+                                ..
+                            } if st_planet == &planet.id => {
+                                (moon.orbit_radius - *st_orbit).abs()
+                                    > moon.radius + st.radius + 10.0
+                            }
+                            _ => true,
+                        });
+                    let non_landable_clean = moon.landable
+                        || (moon.chief.is_none()
+                            && moon.commodities.is_empty()
+                            && moon.shipyard.is_none()
+                            && moon.outfitter.is_none());
+                    let valid_moon = !moon.id.trim().is_empty()
+                        && !moon.name.trim().is_empty()
+                        && center_valid
+                        && moon.radius.is_finite()
+                        && moon.radius > 0.0
+                        && moon.radius < PLANET_RADIUS
+                        && moon.orbit_radius.is_finite()
+                        && moon.orbit_radius > PLANET_RADIUS + moon.radius + 20.0
+                        && moon.period_secs.is_finite()
+                        && moon.period_secs > 0.0
+                        && moon.phase.is_finite()
+                        && clears_ring
+                        && clears_sibling_moons
+                        && clears_orbital_stations
+                        && non_landable_clean;
+                    if !valid_moon {
+                        return Err(ContentError::UnknownReference {
+                            kind: "moon config",
+                            id: format!("{}/{}", system.id, moon.id),
+                        });
+                    }
+                }
+            }
             for station in &system.stations {
                 let valid = station.radius.is_finite()
                     && station.radius > 0.0
@@ -586,7 +691,7 @@ impl ContentPack {
             }
         }
 
-        // Enforce global uniqueness of planet and station IDs across all quadrants.
+        // Enforce global uniqueness of planet, station, and moon IDs across all quadrants.
         validate_ids(
             "docking location",
             systems.iter().flat_map(|s| {
@@ -594,6 +699,15 @@ impl ContentPack {
                     .iter()
                     .map(|p| p.id.clone())
                     .chain(s.stations.iter().map(|st| st.id.clone()))
+                    .chain(s.landable_moons().map(|(_, m)| m.id.clone()))
+            }),
+        )?;
+        validate_ids(
+            "moon",
+            systems.iter().flat_map(|s| {
+                s.planets
+                    .iter()
+                    .flat_map(|p| p.moons.iter().map(|m| m.id.clone()))
             }),
         )?;
 
@@ -614,7 +728,17 @@ impl ContentPack {
                     .map(move |station| format!("{}/{}", s.id, station.id))
             })
             .collect();
-        let dockable_refs: HashSet<String> = planet_refs.union(&station_refs).cloned().collect();
+        let moon_refs: HashSet<String> = systems
+            .iter()
+            .flat_map(|s| {
+                s.landable_moons()
+                    .map(move |(_, moon)| format!("{}/{}", s.id, moon.id))
+            })
+            .collect();
+        let station_or_moon_refs: HashSet<String> =
+            station_refs.union(&moon_refs).cloned().collect();
+        let dockable_refs: HashSet<String> =
+            planet_refs.union(&station_or_moon_refs).cloned().collect();
         let dockable_ids: HashSet<String> = planet_ids
             .iter()
             .cloned()
@@ -622,6 +746,11 @@ impl ContentPack {
                 systems
                     .iter()
                     .flat_map(|s| s.stations.iter().map(|station| station.id.clone())),
+            )
+            .chain(
+                systems
+                    .iter()
+                    .flat_map(|s| s.landable_moons().map(|(_, moon)| moon.id.clone())),
             )
             .collect();
 
@@ -687,7 +816,7 @@ impl ContentPack {
                         validate_reference(
                             "scenario station",
                             &format!("{system}/{station}"),
-                            &station_refs,
+                            &station_or_moon_refs,
                         )?;
                     }
                     ScenarioStep::Dock { system, location } => {
@@ -834,6 +963,7 @@ fn scenario_resolvable_in_scope(
                 .iter()
                 .map(|p| p.id.as_str())
                 .chain(s.stations.iter().map(|st| st.id.as_str()))
+                .chain(s.landable_moons().map(|(_, m)| m.id.as_str()))
         })
         .collect();
     let quest_ids: HashSet<&str> = scoped_quests.iter().map(|(_, q)| q.id.as_str()).collect();
@@ -901,6 +1031,17 @@ fn validate_station_quest_host(
     {
         return Err(ContentError::UnknownReference {
             kind: "quest station master",
+            id: format!("{}/{}", target.0, target.1),
+        });
+    }
+    if systems
+        .iter()
+        .find(|s| s.id == target.0)
+        .and_then(|s| s.landable_moons().find(|(_, moon)| moon.id == target.1))
+        .is_some_and(|(_, moon)| moon.chief.is_none())
+    {
+        return Err(ContentError::UnknownReference {
+            kind: "quest moon chief",
             id: format!("{}/{}", target.0, target.1),
         });
     }
