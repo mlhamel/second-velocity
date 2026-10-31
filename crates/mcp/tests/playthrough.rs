@@ -316,7 +316,7 @@ fn quest_loop_playthrough() {
 fn all_pack_scenarios_pass() {
     let content = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content");
     let reports = sv_mcp::run_scenarios(&content, None).expect("scenarios must load and run");
-    assert_eq!(reports.len(), 16);
+    assert_eq!(reports.len(), 17);
     println!("\n{}", sv_mcp::format_markdown_table(&reports));
     for report in &reports {
         assert!(
@@ -328,4 +328,14 @@ fn all_pack_scenarios_pass() {
         assert!(report.assertions_passed > 0);
         assert!(report.peak_server_entities > 0);
     }
+
+    let scoped_harness = Harness::new_scoped(&content, Some("sol-reach"));
+    assert_eq!(
+        scoped_harness
+            .server
+            .world()
+            .resource::<sv_server::ServedQuadrant>()
+            .0,
+        Some("sol-reach".to_owned())
+    );
 }

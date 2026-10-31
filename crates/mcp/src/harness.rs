@@ -17,7 +17,7 @@ use sv_protocol::{
     SetTurn, SetWarp, ShipInfo, SystemMembership,
 };
 use sv_server::{
-    Content, EMBEDDED_CLIENT_ID, TickMode, attach_memory, build_server_app,
+    Content, EMBEDDED_CLIENT_ID, TickMode, attach_memory, build_server_app_scoped,
     memory_reconnect_transport,
 };
 
@@ -44,7 +44,11 @@ pub struct Harness {
 
 impl Harness {
     pub fn new(content_root: &Path) -> Self {
-        let mut server = build_server_app(content_root, TickMode::PerUpdate, None)
+        Self::new_scoped(content_root, None)
+    }
+
+    pub fn new_scoped(content_root: &Path, quadrant: Option<&str>) -> Self {
+        let mut server = build_server_app_scoped(content_root, TickMode::PerUpdate, None, quadrant)
             .expect("server app must build");
         let (transport, client_socket) = attach_memory(&mut server);
         server.finish();

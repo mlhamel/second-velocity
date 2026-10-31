@@ -33,6 +33,9 @@ pub const MAX_CLIENTS: usize = 64;
 #[derive(Resource)]
 pub struct Content(pub ContentPack);
 
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServedQuadrant(pub Option<String>);
+
 #[derive(Clone, Copy)]
 pub enum TickMode {
     Fixed,
@@ -43,6 +46,15 @@ pub fn build_server_app(
     content_root: impl AsRef<Path>,
     tick: TickMode,
     storage_path: Option<&Path>,
+) -> Result<App, ContentError> {
+    build_server_app_scoped(content_root, tick, storage_path, None)
+}
+
+pub fn build_server_app_scoped(
+    content_root: impl AsRef<Path>,
+    tick: TickMode,
+    storage_path: Option<&Path>,
+    quadrant: Option<&str>,
 ) -> Result<App, ContentError> {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
@@ -61,8 +73,9 @@ pub fn build_server_app(
 
     sv_protocol::register(&mut app);
 
-    let pack = ContentPack::load_dir(content_root.as_ref())?;
+    let pack = ContentPack::load_dir_scoped(content_root.as_ref(), quadrant)?;
     app.insert_resource(Content(pack));
+    app.insert_resource(ServedQuadrant(quadrant.map(str::to_owned)));
     app.add_plugins(GameplayPlugin);
     if let Some(path) = storage_path {
         let storage = crate::storage::SqliteStorage::open(path).expect("sqlite storage must open");

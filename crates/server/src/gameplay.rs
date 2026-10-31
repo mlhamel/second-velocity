@@ -28,8 +28,18 @@ mod progression;
 use progression::*;
 
 pub const PLAYER_SYSTEM: &str = "sol";
-pub const PIRATE_SYSTEM: &str = "alpha-centauri";
 pub const PLAYER_SHIP: &str = "shuttle";
+
+pub fn default_system(pack: &ContentPack) -> &str {
+    if pack.system(PLAYER_SYSTEM).is_some() {
+        PLAYER_SYSTEM
+    } else {
+        pack.systems
+            .first()
+            .map(|s| s.id.as_str())
+            .unwrap_or(PLAYER_SYSTEM)
+    }
+}
 pub const PIRATE_SHIP: &str = "turncoat";
 pub const POLICE_SHIP: &str = "patrol";
 pub const FINE_CREDITS: u32 = 200;
@@ -694,15 +704,17 @@ fn spawn_world(
             }
         }
     }
-    spawn_ship(
-        &mut commands,
-        pack,
-        PIRATE_SHIP,
-        ShipKind::Pirate,
-        None,
-        PIRATE_SYSTEM,
-        Vec2::new(0.0, -400.0),
-    );
+    for system in pack.systems.iter().filter(|sys| sys.pirate) {
+        spawn_ship(
+            &mut commands,
+            pack,
+            PIRATE_SHIP,
+            ShipKind::Pirate,
+            None,
+            &system.id,
+            Vec2::new(0.0, -400.0),
+        );
+    }
     spawn_living_galaxy_npcs(&mut commands, pack);
     commands.insert_resource(market_state);
     commands.insert_resource(faction_state);
@@ -1107,7 +1119,7 @@ fn spawn_default_player(
         PLAYER_SHIP,
         ShipKind::Player,
         Some(owner),
-        PLAYER_SYSTEM,
+        default_system(&content.0),
         Vec2::ZERO,
     );
     commands.entity(ship).insert((
@@ -1559,7 +1571,7 @@ fn npc_ai(
                                     Some(s.links[(*route_step as usize) % s.links.len()].clone())
                                 }
                             })
-                            .unwrap_or_else(|| PLAYER_SYSTEM.to_owned());
+                            .unwrap_or_else(|| default_system(pack).to_owned());
                         let (next_planet, next_pos) = planet_trade_waypoint(pack, &next_sys);
                         *target_system = next_sys;
                         *target_planet = next_planet;
@@ -1610,7 +1622,7 @@ fn npc_ai(
                                     })
                             }
                         })
-                        .unwrap_or_else(|| PLAYER_SYSTEM.to_owned());
+                        .unwrap_or_else(|| default_system(pack).to_owned());
                     if let Some(dest) = pack.system(&next_sys) {
                         *target_pos = Vec2::new(dest.position.0 + 120.0, dest.position.1 - 220.0);
                     }
@@ -2542,7 +2554,7 @@ fn ship_deaths(
                 credits: wallet.map_or(STARTING_CREDITS, |w| w.0.credits),
                 cargo: vec![],
                 ship_id: hull_id,
-                system: PLAYER_SYSTEM.into(),
+                system: default_system(&content.0).into(),
                 position: (0.0, 0.0),
                 fuel: stats.max_fuel,
                 shields: stats.max_shields,
@@ -2647,6 +2659,7 @@ fn respawn_pirates(
     time: Res<Time>,
     content: Res<Content>,
     mut respawn: ResMut<PirateRespawn>,
+    existing_pirates: Query<(&ShipInfo, &SystemMembership, &Ship)>,
 ) {
     let Some(timer) = respawn.0.as_mut() else {
         return;
@@ -2656,15 +2669,29 @@ fn respawn_pirates(
         return;
     }
     respawn.0 = None;
-    spawn_ship(
-        &mut commands,
-        &content.0,
-        PIRATE_SHIP,
-        ShipKind::Pirate,
-        None,
-        PIRATE_SYSTEM,
-        Vec2::new(0.0, -400.0),
-    );
+    let target_sys = content
+        .0
+        .systems
+        .iter()
+        .filter(|s| s.pirate)
+        .find(|s| {
+            !existing_pirates.iter().any(|(info, mem, ship)| {
+                info.kind == ShipKind::Pirate && !ship.0.is_destroyed() && mem.0 == s.id
+            })
+        })
+        .or_else(|| content.0.systems.iter().find(|s| s.pirate))
+        .map(|s| s.id.clone());
+    if let Some(sys_id) = target_sys {
+        spawn_ship(
+            &mut commands,
+            &content.0,
+            PIRATE_SHIP,
+            ShipKind::Pirate,
+            None,
+            &sys_id,
+            Vec2::new(0.0, -400.0),
+        );
+    }
 }
 
 fn update_system_membership(
@@ -5572,5 +5599,153 @@ mod tests {
                     .is_some_and(|hull| hull.shields < player_shields_before)
         });
         h.send(SetFiring(false));
+    }
+
+    #[test]
+    fn two_quadrant_server_scopes_world_and_omits_pirates_when_unflagged() {
+        let dir =
+            std::env::temp_dir().join(format!("sv-server-quadrant-scope-{}", std::process::id()));
+        let q_alpha = dir.join("quadrants/alpha-sector");
+        let q_beta = dir.join("quadrants/beta-sector");
+        std::fs::create_dir_all(&q_alpha).unwrap();
+        std::fs::create_dir_all(&q_beta).unwrap();
+
+        std::fs::write(
+            dir.join("manifest.ron"),
+            r#"(
+                id: "two-quadrant-test",
+                name: "Two Quadrant Test",
+                version: (0, 1, 0),
+                quadrants: ["quadrants/alpha-sector/manifest.ron", "quadrants/beta-sector/manifest.ron"],
+                ships: ["shuttle.ron", "turncoat.ron"],
+                outfits: ["blaster.ron"],
+                commodities: ["food.ron"],
+                scenarios: ["s-alpha.ron", "s-beta.ron"],
+                factions: ["independent.ron"],
+            )"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("shuttle.ron"),
+            r#"(id:"shuttle",name:"Shuttle",description:"",price:100,mass:10.0,turn_rate:3.0,acceleration:120.0,max_speed:220.0,max_shields:40.0,max_armor:25.0,fuel:120,cargo:20,weapon_slots:1,default_outfits:["light-blaster"])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("turncoat.ron"),
+            r#"(id:"turncoat",name:"Turncoat",description:"",price:200,mass:12.0,turn_rate:2.8,acceleration:110.0,max_speed:210.0,max_shields:50.0,max_armor:30.0,fuel:100,cargo:10,weapon_slots:1,default_outfits:["light-blaster"])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("blaster.ron"),
+            r#"(id:"light-blaster",name:"Blaster",description:"",price:50,mass:1.0,kind:Weapon((damage:8.0,cooldown:0.25,projectile_speed:420.0,projectile_ttl:1.2)))"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("food.ron"),
+            r#"(id:"food",name:"Food",description:"",base_price:10)"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("independent.ron"),
+            r#"(id:"independent",name:"Independent",description:"",side:Neutral,color:(0.6,0.6,0.6))"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("s-alpha.ron"),
+            r#"(id:"s-alpha",name:"Alpha",description:"",steps:[AssertSystem("alpha-prime")])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("s-beta.ron"),
+            r#"(id:"s-beta",name:"Beta",description:"",steps:[AssertSystem("beta-haven")])"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            q_alpha.join("manifest.ron"),
+            r#"(id:"alpha-sector",name:"Alpha Sector",origin:(0.0,0.0),size:(6000.0,6000.0),systems:["alpha.ron"])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            q_alpha.join("alpha.ron"),
+            r#"(id:"alpha-prime",name:"Alpha Prime",description:"",government:"independent",position:(0.0,0.0),pirate:true,links:[],planets:[(id:"alpha-port",name:"Alpha Port",description:"",chief:Some((name:"Chief A",greeting:"",offer_text:"",tribute_text:"",quest_text:"")),commodities:[(id:"food",price:10)])])"#,
+        )
+        .unwrap();
+
+        std::fs::write(
+            q_beta.join("manifest.ron"),
+            r#"(id:"beta-sector",name:"Beta Sector",origin:(8000.0,0.0),size:(6000.0,6000.0),systems:["beta1.ron","beta2.ron"])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            q_beta.join("beta1.ron"),
+            r#"(id:"beta-haven",name:"Beta Haven",description:"",government:"independent",position:(-800.0,0.0),pirate:false,links:["beta-outpost"],planets:[(id:"haven-dock",name:"Haven Dock",description:"",chief:Some((name:"Chief B1",greeting:"",offer_text:"",tribute_text:"",quest_text:"")),commodities:[(id:"food",price:8)])])"#,
+        )
+        .unwrap();
+        std::fs::write(
+            q_beta.join("beta2.ron"),
+            r#"(id:"beta-outpost",name:"Beta Outpost",description:"",government:"independent",position:(800.0,0.0),pirate:false,links:["beta-haven"],planets:[(id:"outpost-ring",name:"Outpost Ring",description:"",chief:Some((name:"Chief B2",greeting:"",offer_text:"",tribute_text:"",quest_text:"")),commodities:[(id:"food",price:14)])])"#,
+        )
+        .unwrap();
+
+        let mut server = crate::build_server_app_scoped(
+            &dir,
+            crate::TickMode::PerUpdate,
+            None,
+            Some("beta-sector"),
+        )
+        .expect("scoped server builds");
+        let (_transport, _socket) = crate::attach_memory(&mut server);
+        server.finish();
+        server.update();
+
+        assert_eq!(
+            server.world().resource::<crate::ServedQuadrant>().0,
+            Some("beta-sector".to_owned())
+        );
+        let pack = &server.world().resource::<Content>().0;
+        assert_eq!(pack.quadrants.len(), 1);
+        assert_eq!(pack.quadrants[0].id, "beta-sector");
+        assert_eq!(pack.systems.len(), 2);
+        assert!(pack.system("alpha-prime").is_none());
+        assert_eq!(pack.scenarios.len(), 1);
+        assert_eq!(pack.scenarios[0].id, "s-beta");
+
+        let planets: Vec<String> = server
+            .world_mut()
+            .query::<&PlanetTag>()
+            .iter(server.world())
+            .map(|p| p.id.clone())
+            .collect();
+        assert_eq!(
+            planets,
+            vec!["haven-dock".to_owned(), "outpost-ring".to_owned()]
+        );
+
+        let pirates_count = server
+            .world_mut()
+            .query::<&ShipInfo>()
+            .iter(server.world())
+            .filter(|info| info.kind == ShipKind::Pirate)
+            .count();
+        assert_eq!(
+            pirates_count, 0,
+            "quadrant without pirate-flagged systems must spawn no pirates"
+        );
+
+        crate::gameplay::contracts::force_contract_refresh(server.world_mut(), 1);
+        let board = &server
+            .world()
+            .resource::<crate::gameplay::contracts::ContractBoard>()
+            .contracts;
+        assert!(!board.is_empty());
+        assert!(
+            board
+                .iter()
+                .all(|q| matches!(q.kind, sv_data::QuestKind::Delivery { .. })),
+            "quadrant without pirate-flagged systems must generate no pirate bounties"
+        );
+
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

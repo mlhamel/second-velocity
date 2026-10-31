@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use sv_data::{ContentPack, QuestDef, QuestKind};
+use sv_data::{ContentPack, QuestDef, QuestKind, SystemDef};
 
-use super::{EncounterRng, PIRATE_SYSTEM};
+use super::EncounterRng;
 use crate::Content;
 
 pub const CONTRACT_REFRESH_SECS: f32 = 300.0;
@@ -41,20 +41,19 @@ pub fn generate_board(pack: &ContentPack, rng: &mut EncounterRng, extras: usize)
     if hosts.is_empty() {
         return Vec::new();
     }
-    if pack.system(PIRATE_SYSTEM).is_none() {
-        warn!(
-            "contract board: pirate system '{PIRATE_SYSTEM}' is missing from content; \
-             bounties will target it by name anyway"
-        );
-    }
+    let pirates = pirate_systems(pack);
     let mut contracts = Vec::new();
     for host in &hosts {
-        contracts.push(generate_contract(pack, rng, host, &hosts));
+        if let Some(contract) = generate_contract(pack, rng, host, &hosts, &pirates) {
+            contracts.push(contract);
+        }
     }
     for _ in 0..extras {
         let idx = rng.next_u32(hosts.len() as u32) as usize;
         let host = &hosts[idx];
-        contracts.push(generate_contract(pack, rng, host, &hosts));
+        if let Some(contract) = generate_contract(pack, rng, host, &hosts, &pirates) {
+            contracts.push(contract);
+        }
     }
     for (index, contract) in contracts.iter_mut().enumerate() {
         contract.id = format!("contract-{index}");
@@ -67,8 +66,10 @@ fn generate_contract(
     rng: &mut EncounterRng,
     host: &HostPort,
     hosts: &[HostPort],
-) -> QuestDef {
-    let wants_delivery = !host.commodities.is_empty() && rng.next_u32(10) < 6;
+    pirates: &[&SystemDef],
+) -> Option<QuestDef> {
+    let wants_delivery =
+        !host.commodities.is_empty() && (pirates.is_empty() || rng.next_u32(10) < 6);
     if wants_delivery {
         let commodity =
             host.commodities[rng.next_u32(host.commodities.len() as u32) as usize].clone();
@@ -82,15 +83,16 @@ fn generate_contract(
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         nearby.truncate(NEARBY_HOSTS);
-        if let Some(destination) = nearby
-            .get(rng.next_u32(nearby.len() as u32) as usize)
-            .copied()
+        if !nearby.is_empty()
+            && let Some(destination) = nearby
+                .get(rng.next_u32(nearby.len() as u32) as usize)
+                .copied()
         {
             let qty = CONTRACT_MIN_QTY + rng.next_u32(CONTRACT_MAX_QTY - CONTRACT_MIN_QTY + 1);
             let dist = distance(host.system_pos, destination.system_pos);
             let hazard = system_hazard(pack, &destination.system);
             let timed = rng.next_u32(2) == 0;
-            return QuestDef {
+            return Some(QuestDef {
                 id: String::new(),
                 name: format!("Parcel Run to {}", destination.port_name),
                 giver: (host.system.clone(), host.port.clone()),
@@ -110,21 +112,27 @@ fn generate_contract(
                     destination.port_name,
                     if timed { " The clock is running." } else { "" }
                 ),
-            };
+            });
         }
     }
-    let dist = distance(host.system_pos, system_position(pack, PIRATE_SYSTEM));
-    let hazard = system_hazard(pack, PIRATE_SYSTEM);
+    if pirates.is_empty() {
+        return None;
+    }
+    let target_sys = if pirates.len() == 1 {
+        pirates[0]
+    } else {
+        pirates[rng.next_u32(pirates.len() as u32) as usize]
+    };
+    let dist = distance(host.system_pos, target_sys.position);
+    let hazard = system_hazard(pack, &target_sys.id);
     let timed = rng.next_u32(2) == 0;
-    let system_name = pack
-        .system(PIRATE_SYSTEM)
-        .map_or(PIRATE_SYSTEM.to_owned(), |sys| sys.name.clone());
-    QuestDef {
+    let system_name = &target_sys.name;
+    Some(QuestDef {
         id: String::new(),
         name: format!("Pirate Warrant: {system_name}"),
         giver: (host.system.clone(), host.port.clone()),
         kind: QuestKind::Bounty {
-            system: PIRATE_SYSTEM.to_owned(),
+            system: target_sys.id.clone(),
             target: "pirate".to_owned(),
             deadline_secs: timed.then(|| sv_core::contract::contract_deadline(dist)),
         },
@@ -137,7 +145,7 @@ fn generate_contract(
             "One confirmed pirate kill in the {system_name} approach. The registry pays on telemetry.{}",
             if timed { " The clock is running." } else { "" }
         ),
-    }
+    })
 }
 
 pub fn contract_refresh(time: Res<Time>, mut board: ResMut<ContractBoard>, content: Res<Content>) {
@@ -161,6 +169,10 @@ pub fn force_contract_refresh(world: &mut World, refreshes: u32) {
 
 fn regenerate(board: &mut ContractBoard, pack: &ContentPack) {
     board.contracts = generate_board(pack, &mut board.rng, CONTRACT_EXTRAS);
+}
+
+fn pirate_systems(pack: &ContentPack) -> Vec<&SystemDef> {
+    pack.systems.iter().filter(|sys| sys.pirate).collect()
 }
 
 fn host_ports(pack: &ContentPack) -> Vec<HostPort> {
@@ -192,12 +204,6 @@ fn host_ports(pack: &ContentPack) -> Vec<HostPort> {
     hosts
 }
 
-fn system_position(pack: &ContentPack, system_id: &str) -> (f32, f32) {
-    pack.system(system_id)
-        .map(|sys| (sys.position.0, sys.position.1))
-        .unwrap_or((0.0, 0.0))
-}
-
 fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
     (a.0 - b.0).hypot(a.1 - b.1)
 }
@@ -208,6 +214,9 @@ fn system_hazard(pack: &ContentPack, system_id: &str) -> f32 {
             let mut hazard = 0.0;
             if sys.black_hole.is_some() {
                 hazard += 0.4;
+            }
+            if sys.pirate {
+                hazard += 0.25;
             }
             if sys.meteorites.is_some() {
                 hazard += 0.2;
@@ -269,11 +278,38 @@ mod tests {
                     >= sv_core::contract::DELIVERY_BASE.min(sv_core::contract::BOUNTY_BASE),
                 "rewards must respect the curve floor"
             );
-            if let QuestKind::Bounty { target, .. } = &contract.kind {
+            if let QuestKind::Bounty { system, target, .. } = &contract.kind {
                 assert_eq!(target, "pirate", "bounties must use the pirate wildcard");
+                assert!(
+                    pack.system(system).is_some_and(|s| s.pirate),
+                    "bounty target system must be flagged pirate"
+                );
             }
             assert!(contract.id.starts_with("contract-"));
             assert!(!contract.description.is_empty());
         }
+    }
+
+    #[test]
+    fn scope_without_pirate_systems_generates_no_bounties_and_no_pirate_hazard() {
+        let mut pack = ContentPack::load_dir(&content_root()).expect("pack loads");
+        let with_pirate_hazard = system_hazard(&pack, "alpha-centauri");
+        for sys in &mut pack.systems {
+            sys.pirate = false;
+        }
+        let without_pirate_hazard = system_hazard(&pack, "alpha-centauri");
+        assert!(
+            with_pirate_hazard > without_pirate_hazard,
+            "pirate flag must feed system_hazard"
+        );
+        let mut rng = EncounterRng(123);
+        let board = generate_board(&pack, &mut rng, CONTRACT_EXTRAS);
+        assert!(!board.is_empty());
+        assert!(
+            board
+                .iter()
+                .all(|c| matches!(c.kind, QuestKind::Delivery { .. })),
+            "scope with no flagged pirate systems must generate no pirate bounty jobs"
+        );
     }
 }
