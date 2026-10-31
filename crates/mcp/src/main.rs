@@ -2,6 +2,7 @@ use sv_mcp::harness::Harness;
 
 use std::path::PathBuf;
 
+use clap::Parser;
 use rmcp::ServiceExt;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::schemars::JsonSchema;
@@ -13,6 +14,27 @@ use tokio::sync::{mpsc, oneshot};
 
 const SETTLE_TICKS: u32 = 10;
 const MAX_TICKS: u32 = 600;
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "second-velocity-mcp",
+    version,
+    about = "Second Velocity as an MCP server over stdio; --bench runs scenario benchmarks instead"
+)]
+struct McpCli {
+    /// Run benchmark scenarios (optionally one scenario id) instead of serving MCP
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    bench: Option<Option<String>>,
+    /// Print scenario results as JSON instead of a markdown table
+    #[arg(long)]
+    json: bool,
+    /// Baseline JSON report to annotate deltas against
+    #[arg(long)]
+    compare: Option<PathBuf>,
+    /// Save the JSON report to a file
+    #[arg(long)]
+    save_json: Option<PathBuf>,
+}
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AdvanceArgs {
@@ -160,7 +182,7 @@ impl GameMcp {
         self.call(Command::SellOutfit(outfit)).await
     }
     #[tool(
-        description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and the client built alongside the MCP server. Overwrites the four fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
+        description = "Capture fresh README screenshots using a separate desktop client tour. Requires a working desktop display and the client built alongside the MCP server. Overwrites the six fixed PNG files in docs/screenshots only after the complete tour succeeds. May take up to 180 seconds. Does not capture or alter the headless MCP game session."
     )]
     async fn capture_screenshots(&self) -> rmcp::model::CallToolResult {
         let result = tokio::task::spawn_blocking(|| {
@@ -401,54 +423,74 @@ fn content_root() -> PathBuf {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if let Some(pos) = args.iter().position(|a| a == "--bench") {
-        let json_output = args.iter().any(|a| a == "--json");
-        let compare_path = args
-            .iter()
-            .position(|a| a == "--compare")
-            .and_then(|i| args.get(i + 1))
-            .map(PathBuf::from);
-        let save_json_path = args
-            .iter()
-            .position(|a| a == "--save-json")
-            .and_then(|i| args.get(i + 1))
-            .map(PathBuf::from);
-        let filter_id = args
-            .get(pos + 1)
-            .filter(|arg| !arg.starts_with("--"))
-            .map(String::as_str);
-        let baseline = compare_path
-            .as_ref()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|raw| serde_json::from_str::<Vec<sv_mcp::ScenarioReport>>(&raw).ok());
-        let reports = sv_mcp::run_scenarios(&content_root(), filter_id)?;
-        let json_str = serde_json::to_string_pretty(&reports)?;
-        if let Some(save_path) = save_json_path {
-            std::fs::write(save_path, &json_str)?;
-        }
-        if json_output {
-            println!("{json_str}");
-        } else {
-            print!(
-                "{}",
-                sv_mcp::format_markdown_table_with_baseline(&reports, baseline.as_deref())
-            );
-        }
-        if reports.iter().any(|r| !r.passed) {
-            std::process::exit(1);
-        }
+    let cli = McpCli::parse();
+    let Some(scenario) = cli.bench else {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        runtime.block_on(async move {
+            let service = GameMcp::new(content_root());
+            let server = service.serve(stdio()).await?;
+            server.waiting().await?;
+            Ok::<(), Box<dyn std::error::Error>>(())
+        })?;
         return Ok(());
-    }
+    };
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    runtime.block_on(async move {
-        let service = GameMcp::new(content_root());
-        let server = service.serve(stdio()).await?;
-        server.waiting().await?;
-        Ok::<(), Box<dyn std::error::Error>>(())
-    })?;
+    let filter_id = scenario.filter(|id| !id.is_empty());
+    let baseline = cli
+        .compare
+        .as_ref()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|raw| serde_json::from_str::<Vec<sv_mcp::ScenarioReport>>(&raw).ok());
+    let reports = sv_mcp::run_scenarios(&content_root(), filter_id.as_deref())?;
+    let json_str = serde_json::to_string_pretty(&reports)?;
+    if let Some(save_path) = cli.save_json {
+        std::fs::write(save_path, &json_str)?;
+    }
+    if cli.json {
+        println!("{json_str}");
+    } else {
+        print!(
+            "{}",
+            sv_mcp::format_markdown_table_with_baseline(&reports, baseline.as_deref())
+        );
+    }
+    if reports.iter().any(|report| !report.passed) {
+        std::process::exit(1);
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_parses_serve_default_and_bench_modes() {
+        let serve = McpCli::try_parse_from(["second-velocity-mcp"]).unwrap();
+        assert_eq!(serve.bench, None);
+
+        let all = McpCli::try_parse_from(["second-velocity-mcp", "--bench"]).unwrap();
+        assert_eq!(all.bench, Some(Some(String::new())));
+        assert!(!all.json);
+
+        let one = McpCli::try_parse_from([
+            "second-velocity-mcp",
+            "--bench",
+            "sun-heat-damage",
+            "--json",
+            "--save-json",
+            "reports.json",
+        ])
+        .unwrap();
+        assert_eq!(one.bench, Some(Some("sun-heat-damage".to_owned())));
+        assert!(one.json);
+        assert_eq!(one.save_json, Some(PathBuf::from("reports.json")));
+
+        let flag_after_bench =
+            McpCli::try_parse_from(["second-velocity-mcp", "--bench", "--json"]).unwrap();
+        assert_eq!(flag_after_bench.bench, Some(Some(String::new())));
+        assert!(flag_after_bench.json);
+    }
 }

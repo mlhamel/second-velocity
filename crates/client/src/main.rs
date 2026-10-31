@@ -27,6 +27,34 @@ use bevy_replicon::prelude::*;
 use bevy_replicon_renet2::netcode::{ClientAuthentication, NativeSocket, NetcodeClientTransport};
 use bevy_replicon_renet2::renet2::{ConnectionConfig, RenetClient};
 use bevy_replicon_renet2::{RenetChannelsExt, RepliconRenetPlugins};
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "second-velocity",
+    version,
+    about = "Desktop client for Second Velocity: The Living Galaxy (embedded offline server by default)"
+)]
+struct ClientCli {
+    /// Connect to a remote shard instead of embedding the server
+    #[arg(long, conflicts_with = "capture_tour")]
+    connect: Option<SocketAddr>,
+    /// Account username for remote login
+    #[arg(long)]
+    username: Option<String>,
+    /// Account password for remote login
+    #[arg(long)]
+    password: Option<String>,
+    /// Verbose (debug) logging
+    #[arg(short = 'v', long)]
+    verbose: bool,
+    /// Run the automated screenshot tour and exit
+    #[arg(long)]
+    capture_tour: bool,
+    /// Output directory for the capture tour screenshots
+    #[arg(long, default_value = "docs/screenshots")]
+    capture_dir: std::path::PathBuf,
+}
 
 #[derive(Resource)]
 pub struct MyNetworkId(pub u64);
@@ -56,20 +84,8 @@ fn send_login(
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
-    let capture_tour = args.iter().any(|arg| arg == "--capture-tour");
-    let connect_addr = args.iter().position(|arg| arg == "--connect").map(|index| {
-        let addr = args
-            .get(index + 1)
-            .unwrap_or_else(|| panic!("--connect takes host:port"));
-        addr.parse::<SocketAddr>()
-            .unwrap_or_else(|_| panic!("--connect takes host:port, got {addr:?}"))
-    });
-    assert!(
-        !(capture_tour && connect_addr.is_some()),
-        "--capture-tour requires embedded mode"
-    );
+    let cli = ClientCli::parse();
+    let verbose = cli.verbose;
 
     let mut app = App::new();
     app.add_plugins(
@@ -128,18 +144,10 @@ fn main() {
         )
             .chain(),
     );
-    if capture_tour {
-        let output_dir = args
-            .iter()
-            .position(|arg| arg == "--capture-dir")
-            .map(|index| {
-                std::path::PathBuf::from(
-                    args.get(index + 1)
-                        .expect("--capture-dir takes a directory"),
-                )
-            })
-            .unwrap_or_else(|| "docs/screenshots".into());
-        app.add_plugins(tour::CaptureTourPlugin { output_dir });
+    if cli.capture_tour {
+        app.add_plugins(tour::CaptureTourPlugin {
+            output_dir: cli.capture_dir,
+        });
     }
 
     let (server_channels, client_channels) = {
@@ -152,7 +160,7 @@ fn main() {
     );
     app.insert_resource(client);
 
-    let my_id = match connect_addr {
+    let my_id = match cli.connect {
         Some(server_addr) => {
             let current_time = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -195,15 +203,9 @@ fn main() {
     app.insert_resource(input::ClientContent(content_pack));
     app.insert_resource(MyNetworkId(my_id));
 
-    if connect_addr.is_some() {
-        let username = std::env::args()
-            .position(|arg| arg == "--username")
-            .and_then(|index| std::env::args().nth(index + 1))
-            .unwrap_or_else(|| "pilot".to_owned());
-        let password = std::env::args()
-            .position(|arg| arg == "--password")
-            .and_then(|index| std::env::args().nth(index + 1))
-            .unwrap_or_else(|| "pilot".to_owned());
+    if cli.connect.is_some() {
+        let username = cli.username.unwrap_or_else(|| "pilot".to_owned());
+        let password = cli.password.unwrap_or_else(|| "pilot".to_owned());
         app.add_systems(Update, send_login.run_if(resource_exists::<RenetClient>));
         app.insert_resource(LoginCredentials { username, password });
     }

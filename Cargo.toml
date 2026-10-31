@@ -29,6 +29,7 @@ bevy_replicon_renet2 = { version = "0.19.1", features = [
     "memory_transport",
     "native_transport",
 ] }
+clap = { version = "4", features = ["derive"] }
 glam = "0.32"
 ron = "0.12"
 serde = { version = "1", features = ["derive"] }
