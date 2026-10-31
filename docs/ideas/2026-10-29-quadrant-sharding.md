@@ -54,6 +54,16 @@ runs ALL quadrants locally and is unaffected.
   restores the fallback snapshot and treats the visit as ended. The
   client persists its home server endpoint alongside the camp record,
   so that fallback is always reachable.
+- **Visitor-state sync** (owner, 2026-10-30): nothing streams home
+  continuously — the visited server is fully authoritative for the
+  player while the visit lasts (until return handoff, logout/camp, or
+  home-server-down eviction); credits, purchases, and quest progress
+  mutate the leased copy live. The home fallback snapshot refreshes at
+  every handoff and at every logout (camp); the return handoff ends
+  the lease and home's copy becomes the live authoritative state
+  again, with everything gained on the trip. A visited-server crash
+  can therefore only lose progress made since the last sync point —
+  normally the current session.
 - **Unserved boundary = wrap-around**: a quadrant behaves like a closed
   world; fly off one edge, reappear on the other (toroidal teleport
   reusing the black-hole teleport path). Edges open to handoffs only when
@@ -69,6 +79,18 @@ runs ALL quadrants locally and is unaffected.
   in its quadrant — quests, commodity price tables, faction-control
   system lists, and NPC routes never span a boundary; the loader rejects
   any that does. Cross-quadrant interaction is player-driven only.
+- **Content layout** (owner, 2026-10-30): quadrant-scoped folders. The
+  classification principle: a resource is quadrant content if it
+  references systems/planets/ports, global if other content references
+  it. `content/quadrants/<id>/` carries `systems/` (price tables and
+  faction control ride inside system files), `quests/`, and `pilots/`
+  (ghost pilots are home-anchored) plus a per-quadrant `manifest.ron`
+  that doubles as the `QuadrantDef` (id, name, rectangle origin + size)
+  — superseding the single `content/quadrants.ron` sketch. `ships/`,
+  `outfits/`, `commodities/` (identity only), `factions/` (identity
+  only), and `scenarios/` (global test fixtures, filtered to the served
+  set by the scoped loader) stay at top level. First quadrant folder:
+  `quadrants/sol-reach/`; the empty `missions/` leftover is deleted.
 - **Market evolution: per quadrant** (owner, 2026-10-29): each server runs
   its quadrant's living market (ADR-0015) independently — supply drift,
   candles, and price news never cross a boundary, and the same commodity
@@ -114,10 +136,15 @@ queued: groom each at its phase-start session, not in advance.
 
 ### Phase 0 — Content schema + validation
 
-- [ ] `content/quadrants.ron`: `QuadrantDef` (id, name, rectangle
-      origin + size) + loader validation in sv-data
-- [ ] `SystemDef.quadrant` assignment; every system belongs to exactly one
-      quadrant; sol-reach covers today's 15 systems
+- [ ] Content reorg per the locked layout: `content/quadrants/sol-reach/`
+      with `systems/`, `quests/`, `pilots/` and a per-quadrant
+      `manifest.ron` that IS the `QuadrantDef` (id, name, rectangle
+      origin + size); top-level `content/manifest.ron` gains the
+      explicit quadrants list; two-level loader in sv-data (global +
+      selected quadrant manifests, all when unflagged); delete the
+      empty `missions/`
+- [ ] Every system belongs to exactly one quadrant (folder + loader
+      check); sol-reach covers today's 15 systems
 - [ ] Coordinate model: galaxy position = quadrant origin + local offset
       (sol-reach sits at the origin, so today's positions are the local
       offsets, numerically unchanged)
@@ -141,7 +168,8 @@ queued: groom each at its phase-start session, not in advance.
       one quadrant; omitted flag serves all (offline embedded default)
 - [ ] `spawn_world` (planets, market state, price evolution), membership
       candidates, `ContractBoard`, `FactionState`, and NPC rosters scoped
-      to the served quadrant (all when no flag is passed)
+      to the served quadrant (all when no flag is passed); scenarios
+      filtered to those resolvable in the served set
 - [ ] `PIRATE_SYSTEM` hardcode (`crates/server/src/gameplay.rs:31`) must
       become a per-system content flag — no system or quadrant is
       required to be a pirate system; flagging is per system. The flag
@@ -170,7 +198,8 @@ queued: groom each at its phase-start session, not in advance.
 - Handoff leases a `PlayerState` blob to the target server
   (`PendingRecoveries`-style failure safety, ADR-0014 pattern) so a
   dropped handoff never strands a pilot; the home server stays canonical
-  owner and keeps fallback state for its players who are out visiting.
+  owner and keeps fallback state for its players who are out visiting,
+  refreshed at every handoff and every logout (owner, 2026-10-30).
 - Visit lifecycle (owner, 2026-10-29): death while visiting respawns in
   the visited quadrant; logout camps the pilot on the visited server —
   the lease persists across sessions and re-login lands where they were;
@@ -211,14 +240,9 @@ queued: groom each at its phase-start session, not in advance.
   handoff tickets is the accepted friends-scale answer; a real auth story
   (global identity, central or federated accounts) is a future workstream
   the owner flagged 2026-10-29. Revisit before any open/public fleet.
-- Visitor-state freshness: when a visit ends by server death (or a
-  camper's server never answers re-login), the home server restores the
-  visitor from fallback state — is that the handoff-moment snapshot, or
-  do visits checkpoint home periodically (logout? re-login? timed?).
-  Multi-session camping makes this worse: a long camping visit followed
-  by a visited-server crash would otherwise roll the player back to a
-  stale snapshot. Must be settled before Phase 3's handoff work is
-  called done.
+- Login at home while leased out: home holds only a fallback snapshot
+  while a visit is live, so a second login there would fork the pilot —
+  refuse loudly, or reroute to the visited server? Lock in Phase 3.
 - Faction metagame (ADR-0017): `FactionState` is per-shard today; does
   control of a system in an unattended quadrant drift for nobody, and
   does anything merge when a neighbor comes online?
@@ -282,6 +306,16 @@ queued: groom each at its phase-start session, not in advance.
   logout (01M65BJYZ2T8YRJG6QW1NH06DM, 01M65BJYZAQ4H4WZ8VFQWG172R),
   connection-anchor loss (01M65BJYZJPGWN57VX41Y7Z3CM), and content
   containment (01M65BJYZTM4ADPXWENRBR81T4).
+- Content layout decided 2026-10-30 (decisions 01M66QG3FCEFV8BJG1CH4Q6AVM
+  and 01M67718B63JEA54XEMTBPEYX3, owner-confirmed): quadrant-scoped
+  folders with the per-quadrant manifest as the `QuadrantDef` — first
+  folder `quadrants/sol-reach/`, scenarios global, ghost pilots
+  quadrant-bound, `missions/` deleted. Do not re-litigate the
+  classification.
+- Visitor-state sync points decided 2026-10-30 (decision
+  01M680BQMF3YJTVKZQ8YFMMCJT): the home fallback snapshot refreshes at
+  every handoff and at every logout — do not introduce continuous
+  cross-server state streaming.
 - ADR numbering: 0021 is the next free number. docs/decisions carries a
   pre-existing duplicate-0016 collision; do not renumber unilaterally —
   the owner must bless a renumber or accept the drift.
