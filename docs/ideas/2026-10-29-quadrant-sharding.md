@@ -31,6 +31,18 @@ runs ALL quadrants locally and is unaffected.
 - **Discovery**: **peer gossip** — owner explicitly rejected a
   coordinator. Seed peers + keepalive + full-state quadrant map exchange;
   servers join at any time.
+- **Fleet transport** (owner, 2026-10-30): server-to-server traffic —
+  gossip, handoffs, lease checkpoints — is **REST over HTTP with JSON
+  payloads** between peers. Handoff is a two-party request/response
+  (accept or reject with reason), JSON matches the server's existing
+  serde_json state serialization (SQLite storage blobs), and curl/jq
+  keep friends-scale ops debuggable — a single new dep, a standard Rust
+  HTTP server crate (axum unless Phase 3 grooms otherwise). Rejected:
+  pub/sub (a broker is a coordinator by another name, and there is no
+  reply pattern for handoff accept/reject), gRPC (a protobuf toolchain
+  and a third wire schema for ~4-6 endpoints), renet2-UDP reuse (would
+  rebuild reliable RPC on a client netcode). Clients stay on renet2 UDP
+  for gameplay — the fleet channel is a separate, tiny HTTP surface.
 - **Identity**: per-server accounts + short-lived HMAC **handoff tickets**
   minted with a fleet-shared key. The target server *leases* a copy of
   the visiting account for the duration of the visit (`IncomingPilot`
@@ -191,7 +203,9 @@ queued: groom each at its phase-start session, not in advance.
 
 - Seed peers, keepalive, full-state quadrant map exchange, any-time joins;
   with one server per quadrant the map is a flat quadrant → endpoint
-  table.
+  table. Fleet channel: REST over HTTP with JSON (owner, 2026-10-30) —
+  a small surface (~4-6 endpoints: gossip, handoff, lease-checkpoint,
+  ops status); exact crate choice and endpoint shapes groom here.
 - Crossing a served boundary is the real traversal (owner, 2026-10-29):
   flying into an open edge hands the pilot to the neighbor server.
   Wormholes (Phase 4) remain optional shortcuts, not the primary road.
@@ -316,6 +330,9 @@ queued: groom each at its phase-start session, not in advance.
   01M680BQMF3YJTVKZQ8YFMMCJT): the home fallback snapshot refreshes at
   every handoff and at every logout — do not introduce continuous
   cross-server state streaming.
+- Fleet transport decided 2026-10-30 (decision 01M680Y7GAME6AMC7M34T7G7FB): REST over HTTP
+  with JSON between peers — do not reintroduce a broker (pub/sub) or a
+  second wire-schema toolchain (gRPC) without a new owner decision.
 - ADR numbering: 0021 is the next free number. docs/decisions carries a
   pre-existing duplicate-0016 collision; do not renumber unilaterally —
   the owner must bless a renumber or accept the drift.
