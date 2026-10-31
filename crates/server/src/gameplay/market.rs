@@ -277,6 +277,9 @@ pub fn init_market_state(storage: &StorageResource, pack: &ContentPack) -> Marke
         for station in &system.stations {
             seed(&mut market, &system.id, &station.id, &station.commodities);
         }
+        for (_, moon) in system.landable_moons() {
+            seed(&mut market, &system.id, &moon.id, &moon.commodities);
+        }
     }
     market
         .supplies

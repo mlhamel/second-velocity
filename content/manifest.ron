@@ -70,6 +70,7 @@
         "scenarios/faction-control.ron",
         "scenarios/tactical-combat.ron",
         "scenarios/sol-reach-quadrant.ron",
+        "scenarios/moon-landing-trade.ron",
     ],
     factions: [
         "factions/confederation.ron",

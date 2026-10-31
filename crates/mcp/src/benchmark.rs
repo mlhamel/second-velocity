@@ -426,7 +426,11 @@ fn execute_step(
                         .find(|(tag, _)| {
                             tag.system == *system
                                 && tag.id == *station
-                                && tag.kind == sv_protocol::DockableKind::Station
+                                && matches!(
+                                    tag.kind,
+                                    sv_protocol::DockableKind::Station
+                                        | sv_protocol::DockableKind::Moon
+                                )
                         })
                         .map(|(tag, pos)| (pos.0, tag.radius))
                         .ok_or_else(|| format!("station {system}/{station} not found"))?

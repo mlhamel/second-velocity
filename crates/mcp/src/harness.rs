@@ -635,6 +635,28 @@ impl Harness {
                 .collect::<Vec<_>>()
         };
 
+        let moons = {
+            let mut query = self
+                .server
+                .world_mut()
+                .query::<(&sv_protocol::MoonTag, &Position)>();
+            query
+                .iter(self.server.world())
+                .filter(|(moon, _)| moon.system == system)
+                .map(|(moon, position)| {
+                    serde_json::json!({
+                        "id": moon.id,
+                        "planet": moon.planet,
+                        "system": moon.system,
+                        "name": moon.name,
+                        "position": [position.0.x, position.0.y],
+                        "radius": moon.radius,
+                        "landable": moon.landable,
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+
         let black_holes = {
             let mut query = self
                 .server
@@ -701,6 +723,7 @@ impl Harness {
                 }),
             },
             "planets": planets,
+            "moons": moons,
             "stations": stations,
             "ships": ships,
             "meteorites": meteorites,

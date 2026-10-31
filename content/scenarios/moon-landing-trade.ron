@@ -1,0 +1,22 @@
+(
+    id: "moon-landing-trade",
+    name: "Orbital Moon Landing and Ore Arbitrage",
+    description: "Intercept Luna in orbit around Earth, land on its moonport, buy lunar ore, lift off, and sell on Earth for profit.",
+    encounter_seed: Some(95),
+    max_ticks: 2400,
+    steps: [
+        FlyToStation(system: "sol", station: "luna", dock: true),
+        AssertDocked(Some("luna")),
+        Trade(action: "buy", commodity: "ore", qty: 10),
+        AssertCargo(commodity: "ore", min_qty: 10),
+        Advance(ticks: 60),
+        AssertDocked(Some("luna")),
+        LiftOff,
+        AssertDocked(None),
+        FlyToPlanet(system: "sol", planet: "earth", land: true),
+        AssertDocked(Some("earth")),
+        Trade(action: "sell", commodity: "ore", qty: 10),
+        AssertCredits(min: Some(650)),
+        AssertAlive(true),
+    ],
+)

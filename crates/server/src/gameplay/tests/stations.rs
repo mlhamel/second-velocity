@@ -461,3 +461,46 @@ fn station_master_turns_in_completed_bounties() {
         1100
     );
 }
+
+#[test]
+fn moons_replicate_orbit_and_landable_moons_support_landing_while_ambient_moons_do_not() {
+    let mut h = Harness::new();
+    h.step_until(200, |h| h.my_ship().is_some());
+    h.step_until(100, |h| {
+        h.client
+            .world_mut()
+            .query::<&MoonTag>()
+            .iter(h.client.world())
+            .any(|moon| moon.id == "luna" && moon.landable)
+            && h.client
+                .world_mut()
+                .query::<&MoonTag>()
+                .iter(h.client.world())
+                .any(|moon| moon.id == "cinder" && !moon.landable)
+    });
+
+    // Ambient moon 'cinder' has no DockableTag.
+    assert!(
+        !h.server
+            .world_mut()
+            .query::<&DockableTag>()
+            .iter(h.server.world())
+            .any(|tag| tag.id == "cinder")
+    );
+
+    // Landable moon 'luna' has a DockableTag with DockableKind::Moon and accepts RequestLand.
+    let (luna_tag, luna_pos) = h.station_port("luna");
+    assert_eq!(luna_tag.kind, DockableKind::Moon);
+    h.set_server_ship(1, |ship| {
+        ship.position = luna_pos + Vec2::X * 80.0;
+        ship.velocity = Vec2::ZERO;
+    });
+    h.send(RequestLand {
+        planet: "luna".into(),
+    });
+    let client = h.my_ship().unwrap();
+    h.step_until(100, |h| {
+        h.client_component::<DockedAt>(client)
+            .is_some_and(|d| d.location == "luna" && d.kind == DockableKind::Moon)
+    });
+}

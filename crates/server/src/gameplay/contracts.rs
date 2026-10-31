@@ -200,6 +200,17 @@ fn host_ports(pack: &ContentPack) -> Vec<HostPort> {
                 });
             }
         }
+        for (_, moon) in system.landable_moons() {
+            if moon.chief.is_some() {
+                hosts.push(HostPort {
+                    system: system.id.clone(),
+                    port: moon.id.clone(),
+                    port_name: moon.name.clone(),
+                    system_pos: (system.position.0, system.position.1),
+                    commodities: moon.commodities.iter().map(|c| c.id.clone()).collect(),
+                });
+            }
+        }
     }
     hosts
 }

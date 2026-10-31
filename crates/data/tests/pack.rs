@@ -22,7 +22,7 @@ fn base_pack_loads() {
     assert_eq!(pack.outfits.len(), 8);
     assert_eq!(pack.commodities.len(), 8);
     assert_eq!(pack.quests.len(), 12);
-    assert_eq!(pack.scenarios.len(), 17);
+    assert_eq!(pack.scenarios.len(), 18);
     assert_eq!(pack.factions.len(), 4);
     assert_eq!(pack.pilots.len(), 3);
 

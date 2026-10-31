@@ -12,7 +12,7 @@ use sv_protocol::{
     AccountState, ActiveQuest, ActiveQuests, BlackHoleTag, BuyCommodity, ChiefEncounter, ChiefMood,
     CycleTarget, DockableKind, DockableTag, DockedAt, EncounterOption, Energy, EquippedOutfits,
     Explosion, Fuel, HailShip, Heading, Hull, LoginRequest, LoginResponse, Meteorite,
-    MeteoriteSize, Notice, PlanetTag, PlayerDied, PlayerReputation, PortMarket, Position,
+    MeteoriteSize, MoonTag, Notice, PlanetTag, PlayerDied, PlayerReputation, PortMarket, Position,
     Projectile, ProjectileKind, QuestTarget, RequestDock, RequestLand, RequestLiftOff,
     RespondToEncounter, SellCommodity, SetAfterburner, SetBrake, SetFiring, SetSecondaryFiring,
     SetThrottle, SetTurn, SetWarp, ShipInfo, ShipKind, StarTag, SystemControl, SystemMembership,
@@ -565,6 +565,10 @@ fn spawn_world(
         ));
         let sys_center = Vec2::new(system.position.0, system.position.1);
         for (index, planet) in system.planets.iter().enumerate() {
+            let planet_pos = Vec2::new(
+                system.position.0 + PLANET_OFFSET_X + index as f32 * sv_data::PLANET_SPACING,
+                system.position.1,
+            );
             commands.spawn((
                 Replicated,
                 PlanetTag {
@@ -583,11 +587,51 @@ fn spawn_world(
                 PortMarket {
                     prices: market::port_prices(&market_state, pack, &system.id, &planet.id),
                 },
-                Position(Vec2::new(
-                    system.position.0 + PLANET_OFFSET_X + index as f32 * sv_data::PLANET_SPACING,
-                    system.position.1,
-                )),
+                Position(planet_pos),
             ));
+
+            for moon in &planet.moons {
+                let moon_pos = sv_core::orbit_position(
+                    planet_pos,
+                    moon.orbit_radius,
+                    moon.period_secs,
+                    moon.phase,
+                    0.0,
+                );
+                let mut entity = commands.spawn((
+                    Replicated,
+                    MoonTag {
+                        system: system.id.clone(),
+                        planet: planet.id.clone(),
+                        id: moon.id.clone(),
+                        name: moon.name.clone(),
+                        radius: moon.radius,
+                        landable: moon.landable,
+                    },
+                    Position(moon_pos),
+                    StationOrbit {
+                        center: planet_pos,
+                        radius: moon.orbit_radius,
+                        period_secs: moon.period_secs,
+                        phase: moon.phase,
+                        started_at: time.elapsed_secs_f64(),
+                    },
+                ));
+                if moon.landable {
+                    entity.insert((
+                        DockableTag {
+                            system: system.id.clone(),
+                            id: moon.id.clone(),
+                            name: moon.name.clone(),
+                            radius: moon.radius,
+                            kind: DockableKind::Moon,
+                        },
+                        PortMarket {
+                            prices: market::port_prices(&market_state, pack, &system.id, &moon.id),
+                        },
+                    ));
+                }
+            }
         }
 
         for station in &system.stations {
@@ -2866,7 +2910,7 @@ fn on_request_land(
         .find(|(_, ship_owner, ..)| ship_owner.0 == owner)
         .map(|(_, _, membership, ..)| membership.0.clone());
     let target = ports.iter().find(|(port, _)| {
-        port.kind == DockableKind::Planet
+        matches!(port.kind, DockableKind::Planet | DockableKind::Moon)
             && Some(&port.system) == system.as_ref()
             && port.id == trigger.event().planet
     });
